@@ -1,4 +1,4 @@
 [core]
     remote = myremote
 ['remote "myremote"']
-    url = /Users/akshay/Developer/ remote storage
+    url = s3://yt-dvc-bucket-comment
