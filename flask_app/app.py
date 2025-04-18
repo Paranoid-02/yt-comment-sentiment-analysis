@@ -15,7 +15,7 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from mlflow.tracking import MlflowClient
 import matplotlib.dates as mdates
-import logging # Import logging
+import logging
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -65,7 +65,7 @@ def preprocess_comment(comment):
 def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
     try:
         # Set MLflow tracking URI to your server
-        mlflow.set_tracking_uri("http://ec2-13-61-21-255.eu-north-1.compute.amazonaws.com:5000/") # Make sure this is reachable from where the Flask app runs
+        mlflow.set_tracking_uri("http://ec2-13-60-53-201.eu-north-1.compute.amazonaws.com:5000/")
         app.logger.info(f"Connecting to MLflow at {mlflow.get_tracking_uri()}")
         client = MlflowClient()
         model_uri = f"models:/{model_name}/{model_version}"
@@ -73,7 +73,7 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
         model = mlflow.pyfunc.load_model(model_uri)
         app.logger.info("Model loaded successfully.")
         app.logger.info(f"Loading vectorizer from path: {vectorizer_path}")
-        vectorizer = joblib.load(vectorizer_path)  # Load the vectorizer
+        vectorizer = joblib.load(vectorizer_path)
         app.logger.info("Vectorizer loaded successfully.")
         # Check vectorizer type
         app.logger.info(f"Vectorizer type: {type(vectorizer)}")
@@ -96,9 +96,6 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
         raise e
 
 
-# Initialize the model and vectorizer
-# Make sure './tfidf_vectorizer.pkl' exists in the same directory as your app.py
-# or provide the correct absolute or relative path.
 try:
     model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "4", "./tfidf_vectorizer.pkl")
 except Exception as e:
@@ -109,6 +106,129 @@ except Exception as e:
 @app.route('/')
 def home():
     return "Welcome to our flask api"
+
+@app.route('/predict_with_timestamps', methods=['POST'])
+def predict_with_timestamps():
+    # Ensure model and vectorizer loaded correctly during startup
+    if not model or not vectorizer:
+        return jsonify({"error": "Model or Vectorizer not loaded. Check server logs."}), 503 # Service Unavailable
+
+    data = request.json
+    if not data:
+        return jsonify({"error": "Request body is missing or not JSON"}), 400
+
+    comments_data = data.get('comments') # Expects list of {'text': str, 'timestamp': any}
+
+    if not comments_data:
+        return jsonify({"error": "No 'comments' key found in JSON payload"}), 400
+    if not isinstance(comments_data, list):
+        return jsonify({"error": "'comments' should be a list of dictionaries"}), 400
+    # Add a basic check for structure - refine if stricter validation is needed
+    if not all(isinstance(item, dict) and 'text' in item and 'timestamp' in item for item in comments_data):
+         app.logger.warning("Received items in 'comments' list that are not dictionaries or missing 'text'/'timestamp'. Processing valid items.")
+         # Filter for valid items only
+         original_comments_data = [item for item in comments_data if isinstance(item, dict) and 'text' in item and 'timestamp' in item]
+         if not original_comments_data:
+             return jsonify({"error": "No valid comment data found in 'comments' list after filtering"}), 400
+         app.logger.info(f"Filtered down to {len(original_comments_data)} valid comment data items.")
+    else:
+         original_comments_data = comments_data # Use original list if all items are valid
+
+    app.logger.info(f"Received {len(original_comments_data)} valid comments with timestamps for prediction.")
+
+    try:
+        # Extract original comments and timestamps from the potentially filtered list
+        original_comments = [item.get('text', '') for item in original_comments_data]
+        timestamps = [item.get('timestamp') for item in original_comments_data]
+
+        # Preprocess each comment before vectorizing
+        app.logger.info("Starting preprocessing...")
+        preprocessed_comments = [preprocess_comment(comment) for comment in original_comments]
+        app.logger.info("Preprocessing finished.")
+
+        # --- Filtering based on non-empty preprocessed comments ---
+        # Keep track of indices relative to the 'original_comments_data' list
+        valid_indices = [i for i, p_comment in enumerate(preprocessed_comments) if p_comment]
+
+        if not valid_indices:
+             app.logger.warning("All valid comments became empty after preprocessing.")
+             # Construct response based on original input data before filtering
+             response = [{"comment": item.get('text', ''), "sentiment": "N/A - Empty after preprocessing", "timestamp": item.get('timestamp')} for item in comments_data]
+             return jsonify(response)
+
+        # Filter the preprocessed comments that will be vectorized
+        preprocessed_comments_filtered = [preprocessed_comments[i] for i in valid_indices]
+
+        # Transform the non-empty comments using the vectorizer
+        app.logger.info(f"Vectorizing {len(preprocessed_comments_filtered)} non-empty comments...")
+        transformed_comments_sparse = vectorizer.transform(preprocessed_comments_filtered)
+        app.logger.info(f"Vectorization finished. Sparse matrix shape: {transformed_comments_sparse.shape}")
+
+        # --- Conversion to DataFrame ---
+        app.logger.info("Converting sparse matrix to Pandas DataFrame...")
+        transformed_comments_dense = transformed_comments_sparse.toarray()
+        try:
+            # Use get_feature_names_out() for sklearn >= 0.24
+            feature_names = vectorizer.get_feature_names_out()
+        except AttributeError:
+            # Fallback for older sklearn versions
+            feature_names = vectorizer.get_feature_names()
+        input_df = pd.DataFrame(transformed_comments_dense, columns=feature_names)
+        app.logger.info(f"DataFrame created. Shape: {input_df.shape}")
+        # --- End Conversion ---
+
+        # Make predictions using the DataFrame
+        app.logger.info("Making predictions with the model...")
+        predictions_array = model.predict(input_df)
+        predictions_list = predictions_array.tolist() # Convert numpy array (if applicable) to list
+        app.logger.info("Predictions finished.")
+
+        # Convert predictions to strings for consistency
+        predictions_str_list = [str(pred) for pred in predictions_list]
+
+    except mlflow.exceptions.MlflowException as mle:
+        app.logger.error(f"MLflow prediction failed: {str(mle)}", exc_info=True)
+        # Log input data type and shape again for clarity
+        input_type = type(input_df) if 'input_df' in locals() else 'N/A'
+        input_shape = input_df.shape if 'input_df' in locals() and isinstance(input_df, pd.DataFrame) else 'N/A'
+        app.logger.error(f"Data type passed to predict: {input_type}, shape: {input_shape}")
+        return jsonify({"error": f"MLflow prediction failed: {str(mle)}"}), 500
+    except Exception as e:
+        app.logger.error(f"Generic prediction failed: {str(e)}", exc_info=True) # Log traceback
+        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+
+    # --- Map predictions back to the original full structure ---
+    # Create a dictionary mapping valid indices (from original_comments_data) to predictions
+    prediction_map = {index: prediction for index, prediction in zip(valid_indices, predictions_str_list)}
+
+    # Build the final response list based on the *original* comments_data received
+    response = []
+    for i, item_data in enumerate(original_comments_data): # Iterate through the filtered valid items
+         original_comment_text = item_data.get('text', '')
+         timestamp_val = item_data.get('timestamp')
+         # Check if the current index 'i' corresponds to a comment that was processed
+         if i in prediction_map:
+              sentiment = prediction_map[i]
+         else:
+              # This case handles comments that were valid input but became empty after preprocessing
+              sentiment = "N/A - Empty after preprocessing"
+         response.append({"comment": original_comment_text, "sentiment": sentiment, "timestamp": timestamp_val})
+
+    # If you filtered invalid items at the start, you might want to decide how to represent them
+    # Option 1 (as done above): Only return results for initially valid items.
+    # Option 2: If you need to return *all* original items, including invalid ones:
+    # final_response = []
+    # valid_items_iter = iter(response)
+    # for item in comments_data: # Iterate through the very original input
+    #     if isinstance(item, dict) and 'text' in item and 'timestamp' in item:
+    #         final_response.append(next(valid_items_iter))
+    #     else:
+    #         final_response.append({"comment": str(item), "sentiment": "N/A - Invalid input format", "timestamp": None})
+    # response = final_response # Uncomment this block and comment out the line below if you need Option 2
+
+    app.logger.info(f"Returning {len(response)} predictions with timestamps.")
+    return jsonify(response)
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -205,169 +325,181 @@ def predict():
     app.logger.info(f"Returning {len(response)} predictions.")
     return jsonify(response)
 
-# @app.route('/generate_chart', methods=['POST'])
-# def generate_chart():
-#     try:
-#         data = request.get_json()
-#         sentiment_counts = data.get('sentiment_counts')
+@app.route('/generate_chart', methods=['POST'])
+def generate_chart():
+    try:
+        data = request.get_json()
+        sentiment_counts = data.get('sentiment_counts')
         
-#         if not sentiment_counts:
-#             return jsonify({"error": "No sentiment counts provided"}), 400
+        if not sentiment_counts:
+            return jsonify({"error": "No sentiment counts provided"}), 400
 
-#         # Prepare data for the pie chart
-#         labels = ['Positive', 'Neutral', 'Negative']
-#         sizes = [
-#             int(sentiment_counts.get('1', 0)),
-#             int(sentiment_counts.get('0', 0)),
-#             int(sentiment_counts.get('-1', 0))
-#         ]
-#         if sum(sizes) == 0:
-#             raise ValueError("Sentiment counts sum to zero")
+        # Prepare data for the pie chart
+        labels = ['Positive', 'Neutral', 'Negative']
+        sizes = [
+            int(sentiment_counts.get('1', 0)),
+            int(sentiment_counts.get('0', 0)),
+            int(sentiment_counts.get('-1', 0))
+        ]
+        if sum(sizes) == 0:
+            raise ValueError("Sentiment counts sum to zero")
         
-#         colors = ['#36A2EB', '#C9CBCF', '#FF6384']  # Blue, Gray, Red
+        colors = ['#36A2EB', '#C9CBCF', '#FF6384']  # Blue, Gray, Red
 
-#         # Generate the pie chart
-#         plt.figure(figsize=(6, 6))
-#         plt.pie(
-#             sizes,
-#             labels=labels,
-#             colors=colors,
-#             autopct='%1.1f%%',
-#             startangle=140,
-#             textprops={'color': 'w'}
-#         )
-#         plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+        # Generate the pie chart
+        plt.figure(figsize=(6, 6))
+        plt.pie(
+            sizes,
+            labels=labels,
+            colors=colors,
+            autopct='%1.1f%%',
+            startangle=140,
+            textprops={'color': 'w'}
+        )
+        plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
 
-#         # Save the chart to a BytesIO object
-#         img_io = io.BytesIO()
-#         plt.savefig(img_io, format='PNG', transparent=True)
-#         img_io.seek(0)
-#         plt.close()
+        # Save the chart to a BytesIO object
+        img_io = io.BytesIO()
+        plt.savefig(img_io, format='PNG', transparent=True)
+        img_io.seek(0)
+        plt.close()
 
-#         # Return the image as a response
-#         return send_file(img_io, mimetype='image/png')
-#     except Exception as e:
-#         app.logger.error(f"Error in /generate_chart: {e}")
-#         return jsonify({"error": f"Chart generation failed: {str(e)}"}), 500
+        # Return the image as a response
+        return send_file(img_io, mimetype='image/png')
+    except Exception as e:
+        app.logger.error(f"Error in /generate_chart: {e}")
+        return jsonify({"error": f"Chart generation failed: {str(e)}"}), 500
 
-# @app.route('/generate_wordcloud', methods=['POST'])
-# def generate_wordcloud():
-#     try:
-#         data = request.get_json()
-#         comments = data.get('comments')
+@app.route('/generate_wordcloud', methods=['POST'])
+def generate_wordcloud():
+    try:
+        data = request.get_json()
+        comments = data.get('comments')
 
-#         if not comments:
-#             return jsonify({"error": "No comments provided"}), 400
+        if not comments:
+            return jsonify({"error": "No comments provided"}), 400
 
-#         # Preprocess comments
-#         preprocessed_comments = [preprocess_comment(comment) for comment in comments]
+        # Preprocess comments
+        preprocessed_comments = [preprocess_comment(comment) for comment in comments]
 
-#         # Combine all comments into a single string
-#         text = ' '.join(preprocessed_comments)
+        # Combine all comments into a single string
+        text = ' '.join(preprocessed_comments)
 
-#         # Generate the word cloud
-#         wordcloud = WordCloud(
-#             width=800,
-#             height=400,
-#             background_color='black',
-#             colormap='Blues',
-#             stopwords=set(stopwords.words('english')),
-#             collocations=False
-#         ).generate(text)
+        # Generate the word cloud
+        wordcloud = WordCloud(
+            width=800,
+            height=400,
+            background_color='black',
+            colormap='Blues',
+            stopwords=set(stopwords.words('english')),
+            collocations=False
+        ).generate(text)
 
-#         # Save the word cloud to a BytesIO object
-#         img_io = io.BytesIO()
-#         wordcloud.to_image().save(img_io, format='PNG')
-#         img_io.seek(0)
+        # Save the word cloud to a BytesIO object
+        img_io = io.BytesIO()
+        wordcloud.to_image().save(img_io, format='PNG')
+        img_io.seek(0)
 
-#         # Return the image as a response
-#         return send_file(img_io, mimetype='image/png')
-#     except Exception as e:
-#         app.logger.error(f"Error in /generate_wordcloud: {e}")
-#         return jsonify({"error": f"Word cloud generation failed: {str(e)}"}), 500
+        # Return the image as a response
+        return send_file(img_io, mimetype='image/png')
+    except Exception as e:
+        app.logger.error(f"Error in /generate_wordcloud: {e}")
+        return jsonify({"error": f"Word cloud generation failed: {str(e)}"}), 500
 
-# @app.route('/generate_trend_graph', methods=['POST'])
-# def generate_trend_graph():
-#     try:
-#         data = request.get_json()
-#         sentiment_data = data.get('sentiment_data')
+@app.route('/generate_trend_graph', methods=['POST'])
+def generate_trend_graph():
+    try:
+        data = request.get_json()
+        sentiment_data = data.get('sentiment_data')
 
-#         if not sentiment_data:
-#             return jsonify({"error": "No sentiment data provided"}), 400
+        if not sentiment_data:
+            return jsonify({"error": "No sentiment data provided"}), 400
 
-#         # Convert sentiment_data to DataFrame
-#         df = pd.DataFrame(sentiment_data)
-#         df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Convert sentiment_data to DataFrame
+        df = pd.DataFrame(sentiment_data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-#         # Set the timestamp as the index
-#         df.set_index('timestamp', inplace=True)
+        # Set the timestamp as the index
+        df.set_index('timestamp', inplace=True)
 
-#         # Ensure the 'sentiment' column is numeric
-#         df['sentiment'] = df['sentiment'].astype(int)
+        # Ensure the 'sentiment' column is numeric
+        df['sentiment'] = df['sentiment'].astype(int)
 
-#         # Map sentiment values to labels
-#         sentiment_labels = {-1: 'Negative', 0: 'Neutral', 1: 'Positive'}
+        # Map sentiment values to labels
+        sentiment_labels = {-1: 'Negative', 0: 'Neutral', 1: 'Positive'}
 
-#         # Resample the data over monthly intervals and count sentiments
-#         monthly_counts = df.resample('M')['sentiment'].value_counts().unstack(fill_value=0)
+        # Resample the data over monthly intervals and count sentiments
+        monthly_counts = df.resample('M')['sentiment'].value_counts().unstack(fill_value=0)
 
-#         # Calculate total counts per month
-#         monthly_totals = monthly_counts.sum(axis=1)
+        # Calculate total counts per month
+        monthly_totals = monthly_counts.sum(axis=1)
 
-#         # Calculate percentages
-#         monthly_percentages = (monthly_counts.T / monthly_totals).T * 100
+        # Calculate percentages, handle division by zero
+        # Create an empty DataFrame with the same index and columns to store percentages
+        monthly_percentages = pd.DataFrame(index=monthly_counts.index, columns=monthly_counts.columns)
+        # Iterate through each month (row)
+        for month_index, total in monthly_totals.items():
+            if total > 0:
+                # Calculate percentage for the current month
+                monthly_percentages.loc[month_index] = (monthly_counts.loc[month_index] / total) * 100
+            else:
+                # If total is 0, set percentages to 0 for that month
+                monthly_percentages.loc[month_index] = 0
 
-#         # Ensure all sentiment columns are present
-#         for sentiment_value in [-1, 0, 1]:
-#             if sentiment_value not in monthly_percentages.columns:
-#                 monthly_percentages[sentiment_value] = 0
+        # Ensure the DataFrame has the correct dtype (float) after manual assignment
+        monthly_percentages = monthly_percentages.astype(float)
 
-#         # Sort columns by sentiment value
-#         monthly_percentages = monthly_percentages[[-1, 0, 1]]
 
-#         # Plotting
-#         plt.figure(figsize=(12, 6))
+        # Ensure all sentiment columns are present
+        for sentiment_value in [-1, 0, 1]:
+            if sentiment_value not in monthly_percentages.columns:
+                monthly_percentages[sentiment_value] = 0.0 # Add as float
 
-#         colors = {
-#             -1: 'red',     # Negative sentiment
-#             0: 'gray',     # Neutral sentiment
-#             1: 'green'     # Positive sentiment
-#         }
+        # Sort columns by sentiment value
 
-#         for sentiment_value in [-1, 0, 1]:
-#             plt.plot(
-#                 monthly_percentages.index,
-#                 monthly_percentages[sentiment_value],
-#                 marker='o',
-#                 linestyle='-',
-#                 label=sentiment_labels[sentiment_value],
-#                 color=colors[sentiment_value]
-#             )
+        # Plotting
+        plt.figure(figsize=(12, 6))
 
-#         plt.title('Monthly Sentiment Percentage Over Time')
-#         plt.xlabel('Month')
-#         plt.ylabel('Percentage of Comments (%)')
-#         plt.grid(True)
-#         plt.xticks(rotation=45)
+        colors = {
+            -1: 'red',     # Negative sentiment
+            0: 'gray',     # Neutral sentiment
+            1: 'green'     # Positive sentiment
+        }
 
-#         # Format the x-axis dates
-#         plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-#         plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=12))
+        for sentiment_value in [-1, 0, 1]:
+            plt.plot(
+                monthly_percentages.index,
+                monthly_percentages[sentiment_value],
+                marker='o',
+                linestyle='-',
+                label=sentiment_labels[sentiment_value],
+                color=colors[sentiment_value]
+            )
 
-#         plt.legend()
-#         plt.tight_layout()
+        plt.title('Monthly Sentiment Percentage Over Time')
+        plt.xlabel('Month')
+        plt.ylabel('Percentage of Comments (%)')
+        plt.grid(True)
+        plt.xticks(rotation=45)
 
-#         # Save the trend graph to a BytesIO object
-#         img_io = io.BytesIO()
-#         plt.savefig(img_io, format='PNG')
-#         img_io.seek(0)
-#         plt.close()
+        # Format the x-axis dates
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+        plt.gca().xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=12))
 
-#         # Return the image as a response
-#         return send_file(img_io, mimetype='image/png')
-#     except Exception as e:
-#         app.logger.error(f"Error in /generate_trend_graph: {e}")
-#         return jsonify({"error": f"Trend graph generation failed: {str(e)}"}), 500
+        plt.legend()
+        plt.tight_layout()
+
+        # Save the trend graph to a BytesIO object
+        img_io = io.BytesIO()
+        plt.savefig(img_io, format='PNG')
+        img_io.seek(0)
+        plt.close()
+
+        # Return the image as a response
+        return send_file(img_io, mimetype='image/png')
+    except Exception as e:
+        app.logger.error(f"Error in /generate_trend_graph: {e}")
+        return jsonify({"error": f"Trend graph generation failed: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
