@@ -2,134 +2,98 @@ pipeline {
     agent any
     
     environment {
-        AWS_ACCESS_KEY_ID = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         AWS_DEFAULT_REGION = 'eu-north-1'
         MLFLOW_TRACKING_URI = 'http://your-mlflow-server:5000'
-        GITHUB_TOKEN = credentials('github-token')
     }
     
     stages {
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                git branch: 'main', url: 'https://github.com/Paranoid-02/yt-comment-sentiment-analysis.git'
-                sh 'git submodule update --init --recursive'
+                checkout scm
             }
         }
         
-        stage('Setup Python') {
+        stage('Setup Environment') {
             steps {
-                sh '''
-                    python -m venv venv
-                    . venv/bin/activate
-                    pip install --upgrade pip
-                '''
+                node {
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh '''
+                            echo "Setting up Python environment..."
+                            python -m venv venv
+                            . venv/bin/activate
+                            pip install --upgrade pip
+                            pip install -r requirements.txt
+                            pip install pytest
+                        '''
+                    }
+                }
             }
         }
         
-        stage('Install Dependencies') {
+        stage('Run DVC Pipeline') {
             steps {
-                sh '''
-                    . venv/bin/activate
-                    pip install -r requirements.txt
-                    pip install pytest
-                '''
-            }
-        }
-        
-        stage('DVC Pipeline') {
-            steps {
-                sh '''
-                    . venv/bin/activate
-                    dvc pull
-                    dvc repro
-                    dvc push
-                '''
-            }
-        }
-        
-        stage('Git Commit Changes') {
-            steps {
-                sh '''
-                    git config --global user.name "jenkins"
-                    git config --global user.email "jenkins@example.com"
-                    git add .
-                    git commit -m "Automated commit of DVC outputs and updated code" || echo "No changes to commit"
-                    git push origin main
-                '''
+                node {
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh '''
+                            . venv/bin/activate
+                            dvc pull
+                            dvc repro
+                            dvc push
+                        '''
+                    }
+                }
             }
         }
         
         stage('Run Tests') {
             steps {
-                sh '''
-                    . venv/bin/activate
-                    pytest scripts/test_load_model.py
-                    pytest scripts/test_model_signature.py
-                    pytest scripts/test_model_performance.py
-                '''
+                node {
+                    withCredentials([
+                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    ]) {
+                        sh '''
+                            . venv/bin/activate
+                            pytest scripts/test_load_model.py
+                            pytest scripts/test_model_signature.py
+                            pytest scripts/test_model_performance.py
+                        '''
+                    }
+                }
             }
         }
         
-        stage('Model Promotion') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
+        stage('Build and Deploy') {
             steps {
-                sh '''
-                    . venv/bin/activate
-                    python scripts/promote_model.py
-                '''
-            }
-        }
-        
-        stage('Build Docker Image') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
-            steps {
-                sh '''
-                    docker build -t yt-chrome-plugin .
-                '''
-            }
-        }
-        
-        stage('Prepare for Ansible Deployment') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
-            steps {
-                sh '''
-                    mkdir -p ansible/files
-                    cp -r deploy/scripts ansible/files/
-                    cp appspec.yml ansible/files/
-                    tar -czvf ansible/deployment.tar.gz -C ansible/files .
-                '''
-            }
-        }
-        
-        stage('Ansible Deployment') {
-            when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-            }
-            steps {
-                sh '''
-                    ansible-playbook ansible/deploy.yml -i ansible/inventory/production.ini \
-                    --extra-vars "docker_image=yt-chrome-plugin"
-                '''
+                node {
+                    sh 'docker build -t yt-chrome-plugin .'
+                    
+                    // Ansible deployment would go here
+                    sh 'echo "Ansible deployment would execute here"'
+                }
             }
         }
     }
     
     post {
         always {
-            cleanWs()
+            node {
+                cleanWs()
+            }
         }
         success {
-            slackSend(color: 'good', message: "Pipeline SUCCESSFUL: ${env.JOB_NAME} [${env.BUILD_NUMBER}]")
+            // Replace with your notification method
+            echo 'Pipeline succeeded!'
         }
         failure {
-            slackSend(color: 'danger', message: "Pipeline FAILED: ${env.JOB_NAME} [${env.BUILD_NUMBER}]")
+            // Replace with your notification method
+            echo 'Pipeline failed!'
         }
     }
 }
