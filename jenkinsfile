@@ -17,8 +17,21 @@ pipeline {
         
         stage('Setup Python') {
             steps {
-                sh 'python -m venv venv'
-                sh '. venv/bin/activate && pip install -r requirements.txt'
+                script {
+                    // Check for Python installation and install if missing
+                    def pythonInstalled = sh(script: 'command -v python3 || command -v python', returnStatus: true) == 0
+                    
+                    if (!pythonInstalled) {
+                        if (isUnix()) {
+                            sh 'sudo apt-get update && sudo apt-get install -y python3 python3-venv'
+                        } else {
+                            bat 'choco install python -y'
+                        }
+                    }
+                    
+                    // Create virtual environment
+                    sh 'python3 -m venv venv || python -m venv venv'
+                }
             }
         }
         
