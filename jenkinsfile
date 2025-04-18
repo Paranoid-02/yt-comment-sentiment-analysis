@@ -35,12 +35,26 @@ pipeline {
             }
         }
         
-        stage('Install Dependencies') {
+        stage('Setup Environment') {
             steps {
-                sh '. venv/bin/activate && pip install -r requirements.txt'
+                sh '''
+                    # Create fresh virtual environment
+                    python3 -m venv venv --clear
+                    . venv/bin/activate
+                    
+                    # Install core dependencies FIRST
+                    pip install --upgrade pip wheel setuptools
+                    
+                    # Install DVC with AWS/S3 support
+                    pip install 'dvc[s3]>=3.0.0'  # The quotes prevent shell interpretation
+                    
+                    # Verify installation
+                    dvc --version || { echo "❌ DVC installation failed"; exit 1; }
+                    which dvc
+                '''
             }
         }
-        
+
         stage('Run DVC Pipeline') {
             steps {
                 withCredentials([
@@ -48,13 +62,23 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh '''
+                        # MUST activate the same venv
                         . venv/bin/activate
+                        
+                        # Debugging info
+                        echo "Python path: $(which python)"
+                        echo "DVC path: $(which dvc)"
+                        dvc doctor  # Check DVC environment
+                        
+                        # Run pipeline
+                        dvc pull || echo "⚠️ DVC pull failed (first run?)"
                         dvc repro
                         dvc push
                     '''
                 }
             }
         }
+
         stage('Version Data & Code') {
             steps {
                 withCredentials([
