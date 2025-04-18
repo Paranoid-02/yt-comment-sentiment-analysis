@@ -45,6 +45,8 @@ pipeline {
                     
                     # Install both project deps AND DVC
                     pip install -r requirements.txt dvc dvc-s3
+
+                    dvc --version
                 '''
             }
         }
