@@ -55,7 +55,41 @@ pipeline {
                 }
             }
         }
-        
+        stage('Version Data & Code') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'github-token',
+                        usernameVariable: 'Paranoid-02',
+                        passwordVariable: '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'
+                    )
+                ]) {
+                    sh '''
+                        # Configure Git (important for Jenkins)
+                        git config --global user.name "Jenkins Automation"
+                        git config --global user.email "jenkins@paranoia.com"
+                        
+                        # Check if DVC caused any file changes
+                        if [ -n "$(git status --porcelain)" ]; then
+                            echo "Detected changes in DVC-tracked files"
+                            
+                            # Add all changes (both code and DVC files)
+                            git add .
+                            
+                            # Commit with a descriptive message
+                            git commit -m "[Jenkins] Update data/models (Build ${BUILD_NUMBER})"
+                            
+                            # Push using token-based authentication
+                            git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
+                            
+                            echo "Successfully pushed changes to GitHub"
+                        else
+                            echo "No DVC-tracked files changed - skipping commit"
+                        fi
+                    '''
+                }
+            }
+        }
     }
     
     post {
