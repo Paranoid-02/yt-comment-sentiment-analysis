@@ -3,28 +3,34 @@ pipeline {
     
     environment {
         AWS_DEFAULT_REGION = 'eu-north-1'
-        GIT_USER_NAME = 'Paranoid-02'
-        GIT_USER_EMAIL = 'akshay_02@outlook.com'
+        GITHUB_REPO_URL = 'https://github.com/Paranoid-02/yt-comment-sentiment-analysis.git'
     }
     
     stages {
         stage('Checkout Code') {
             steps {
-                checkout scm
+                script {
+                    git branch: 'main', url: "${GITHUB_REPO_URL}"
+                }
             }
         }
         
-        stage('Set Up Python') {
+        stage('Setup Python') {
             steps {
                 script {
-                    // Equivalent to actions/setup-python
-                    sh 'python -m venv venv'
-                    sh '. venv/bin/activate && pip install --upgrade pip'
+                    // Check for Python installation and install if missing
+                    def pythonInstalled = sh(script: 'command -v python3 || command -v python', returnStatus: true) == 0
                     
-                    // Equivalent to actions/cache (Jenkins has built-in caching)
-                    if (fileExists('~/.cache/pip')) {
-                        echo 'Using cached pip dependencies'
+                    if (!pythonInstalled) {
+                        if (isUnix()) {
+                            sh 'sudo apt-get update && sudo apt-get install -y python3 python3-venv'
+                        } else {
+                            bat 'choco install python -y'
+                        }
                     }
+                    
+                    // Create virtual environment
+                    sh 'python3 -m venv venv || python -m venv venv'
                 }
             }
         }
