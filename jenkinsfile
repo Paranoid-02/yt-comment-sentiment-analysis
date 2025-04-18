@@ -37,7 +37,15 @@ pipeline {
         
         stage('Install Dependencies') {
             steps {
-                sh '. venv/bin/activate && pip install -r requirements.txt'
+                sh '''
+                    . venv/bin/activate
+                    
+                    # Ensure pip is upgraded first
+                    python -m pip install --upgrade pip
+                    
+                    # Install both project deps AND DVC
+                    pip install -r requirements.txt dvc dvc-s3
+                '''
             }
         }
         
