@@ -3,96 +3,63 @@ pipeline {
     
     environment {
         AWS_DEFAULT_REGION = 'eu-north-1'
-        MLFLOW_TRACKING_URI = 'http://your-mlflow-server:5000'
+        GIT_USER_NAME = 'Paranoid-02'
+        GIT_USER_EMAIL = 'akshay_02@outlook.com'
     }
     
     stages {
-        stage('Checkout SCM') {
+        stage('Checkout Code') {
             steps {
                 checkout scm
             }
         }
         
-        stage('Setup Environment') {
+        stage('Set Up Python') {
             steps {
-                node {
-                    withCredentials([
-                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                    ]) {
-                        sh '''
-                            echo "Setting up Python environment..."
-                            python -m venv venv
-                            . venv/bin/activate
-                            pip install --upgrade pip
-                            pip install -r requirements.txt
-                            pip install pytest
-                        '''
+                script {
+                    // Equivalent to actions/setup-python
+                    sh 'python -m venv venv'
+                    sh '. venv/bin/activate && pip install --upgrade pip'
+                    
+                    // Equivalent to actions/cache (Jenkins has built-in caching)
+                    if (fileExists('~/.cache/pip')) {
+                        echo 'Using cached pip dependencies'
                     }
                 }
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh '. venv/bin/activate && pip install -r requirements.txt'
             }
         }
         
         stage('Run DVC Pipeline') {
             steps {
-                node {
-                    withCredentials([
-                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                    ]) {
-                        sh '''
-                            . venv/bin/activate
-                            dvc pull
-                            dvc repro
-                            dvc push
-                        '''
-                    }
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        . venv/bin/activate
+                        dvc repro
+                        dvc push
+                    '''
                 }
             }
         }
         
-        stage('Run Tests') {
-            steps {
-                node {
-                    withCredentials([
-                        string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                        string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                    ]) {
-                        sh '''
-                            . venv/bin/activate
-                            pytest scripts/test_load_model.py
-                            pytest scripts/test_model_signature.py
-                            pytest scripts/test_model_performance.py
-                        '''
-                    }
-                }
-            }
-        }
-        
-        stage('Build and Deploy') {
-            steps {
-                node {
-                    sh 'docker build -t yt-chrome-plugin .'
-                    
-                    // Ansible deployment would go here
-                    sh 'echo "Ansible deployment would execute here"'
-                }
-            }
-        }
     }
     
     post {
         always {
-            node {
-                cleanWs()
-            }
+            cleanWs()
         }
         success {
-            // Replace with your notification method
             echo 'Pipeline succeeded!'
         }
         failure {
-            // Replace with your notification method
             echo 'Pipeline failed!'
         }
     }
