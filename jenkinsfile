@@ -132,17 +132,23 @@ pipeline {
                     usernameVariable: 'UNUSED_USERNAME',      // Variable for username (can ignore if using env.GIT_USERNAME)
                     passwordVariable: 'GH_TOKEN_FROM_CRED'    // Variable for the password (PAT) - USE THIS!
                 )]) {
-                    // Use DOUBLE QUOTES (""") and escape shell dollar signs (\$)
                     sh """
+                        #!/bin/bash -e
                         # Configure Git
                         git config --global user.name "Jenkins CI"
                         git config --global user.email "jenkins@mlops.com" # Change this email
 
                         # Debug: Verify the token variable is set inside shell
                         echo "DEBUG SHELL: GH_TOKEN_FROM_CRED variable is set."
-                        if [ -z "\${GH_TOKEN_FROM_CRED}" ]; then
+                        # Check the variable passed by withCredentials
+                        if [ -z "${GH_TOKEN_FROM_CRED}" ]; then
                            echo "ERROR SHELL: GH_TOKEN_FROM_CRED is empty!"
                            exit 1 # Fail if token is unexpectedly empty
+                        fi
+                        # Also check the environment variable for username
+                        if [ -z "${GIT_USERNAME}" ]; then
+                           echo "ERROR SHELL: GIT_USERNAME env var is empty!"
+                           exit 1
                         fi
 
                         # Debug: Show remote URL and changes
@@ -150,17 +156,17 @@ pipeline {
                         git status --porcelain
 
                         # Only proceed if there are changes
-                        # Escape \$ for shell command substitution
+                        # Escape \$ for shell command substitution $(...)
                         if [ -n "\$(git status --porcelain)" ]; then
                             echo "📌 Changes detected - committing..."
                             git add .
-                            # Escape \$ for shell environment variable
+                            # Escape \$ for shell environment variable ${BUILD_NUMBER}
                             git commit -m "[Jenkins] Update DVC tracking (Build \${BUILD_NUMBER})" || echo "Commit failed or nothing to commit, continuing..."
 
                             # Push using authenticated URL
-                            # Use environment GIT_USERNAME and the token from withCredentials
+                            # NO backslash needed for Groovy variables ${GIT_USERNAME} and ${GH_TOKEN_FROM_CRED}
                             echo "Attempting git push..."
-                            git push https://\${GIT_USERNAME}:\${GH_TOKEN_FROM_CRED}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
+                            git push https://${GIT_USERNAME}:${GH_TOKEN_FROM_CRED}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
 
                             echo "✅ Successfully pushed changes"
                         else
