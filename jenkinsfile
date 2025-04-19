@@ -139,14 +139,14 @@ pipeline {
             environment {
                 FLASK_APP = 'flask_app/app.py'
                 FLASK_ENV = 'production'
-                MLFLOW_TRACKING_URI = 'http://ec2-13-60-211-129.eu-north-1.compute.amazonaws.com:5000/'
-                VECTORIZER_PATH = '${WORKSPACE}/tfidf_vectorizer.pkl' // Absolute path
+                MLFLOW_TRACKING_URI = 'http://ec2-13-49-240-199.eu-north-1.compute.amazonaws.com:5000/'
+                VECTORIZER_PATH = '${WORKSPACE}/tfidf_vectorizer.pkl'
             }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
-                    file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE') // Store vectorizer as Jenkins file credential
+                    file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE')
                 ]) {
                     sh '''
                         # 1. Setup environment
