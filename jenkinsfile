@@ -147,7 +147,7 @@ pipeline {
                 ]) {
                     sh '''#!/bin/bash
                         . venv/bin/activate
-                        
+
                         # 1. Kill any existing Flask processes
                         pkill -f "flask run" || true
                         
@@ -156,19 +156,15 @@ pipeline {
                         FLASK_PID=$!
                         echo $FLASK_PID > flask.pid
                         
-                        # 3. Wait for startup with verbose logging
-                        echo "Waiting for Flask to start..."
-                        for i in {1..30}; do
-                            if curl -s http://localhost:5000/healthcheck; then
-                                echo "Flask started successfully"
-                                break
-                            fi
-                            sleep 1
-                            [ $i -eq 30 ] && { echo "❌ Flask failed to start"; cat flask.log; exit 1; }
-                        done
+                        # Wait for startup
+                        sleep 5  # Give Flask more time to initialize
                         
-                        # 4. Run tests
-                        pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
+                        # Run tests with detailed output
+                        python -m pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml --log-cli-level=INFO
+                        
+                        # Capture logs immediately after tests
+                        echo "----- FLASK DEBUG LOGS -----"
+                        cat flask-debug.log
                     '''
                 }
             }
