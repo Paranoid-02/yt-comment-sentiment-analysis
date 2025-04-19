@@ -82,6 +82,43 @@ pipeline {
             }
         }
 
+        stage('Test Model') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh """
+                        #!/bin/bash -e
+                        # Use python/pytest from venv explicitly
+                        echo "Running model tests using venv..."
+                        PYTHON_EXEC=$(pwd)/venv/bin/python
+                        PIP_EXEC=$(pwd)/venv/bin/pip
+                        PYTEST_EXEC=$(pwd)/venv/bin/pytest
+
+                        # Verify pytest is installed
+                        if ! \${PIP_EXEC} show pytest &> /dev/null; then
+                            echo "pytest not found, installing..."
+                            \${PIP_EXEC} install pytest
+                        fi
+
+                        echo "Running pytest..."
+                        # Execute pytest, pointing to the test files
+                        # -v for verbose output
+                        # --junitxml generates report for Jenkins
+                        # Pass AWS credentials as env vars (already done by withCredentials)
+                        \${PYTEST_EXEC} -v --junitxml=test-results.xml test_load_model.py test_model_signature.py test_model_performance.py
+
+                        echo "✅ Model tests finished."
+                    """ // End sh block
+                } // End withCredentials
+
+                // Publish test results (requires JUnit plugin in Jenkins)
+                // This step runs outside the sh block but after it completes
+                junit 'test-results.xml'
+            }
+        }
+
         stage('Git Versioning') {
             when {
                 expression {
