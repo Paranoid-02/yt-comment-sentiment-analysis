@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="5" time="0.938" timestamp="2025-04-19T16:01:58.919166+05:30" hostname="ubuntu-linux-22-04-02-desktop"><testcase classname="scripts.test_flask_api" name="test_predict_endpoint" time="0.601"><failure message="assert 500 == 200&#10; +  where 500 = &lt;Response [500]&gt;.status_code">def test_predict_endpoint():
+        data = {
+            "comments": ["This is a great product!", "Not worth the money.", "It's okay."]
+        }
+        response = requests.post(f"{BASE_URL}/predict", json=data)
+&gt;       assert response.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = &lt;Response [500]&gt;.status_code
+
+scripts/test_flask_api.py:12: AssertionError</failure></testcase><testcase classname="scripts.test_flask_api" name="test_predict_with_timestamps_endpoint" time="0.031"><failure message="assert 500 == 200&#10; +  where 500 = &lt;Response [500]&gt;.status_code">def test_predict_with_timestamps_endpoint():
+        data = {
+            "comments": [
+                {"text": "This is fantastic!", "timestamp": "2024-10-25 10:00:00"},
+                {"text": "Could be better.", "timestamp": "2024-10-26 14:00:00"}
+            ]
+        }
+        response = requests.post(f"{BASE_URL}/predict_with_timestamps", json=data)
+&gt;       assert response.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = &lt;Response [500]&gt;.status_code
+
+scripts/test_flask_api.py:23: AssertionError</failure></testcase><testcase classname="scripts.test_flask_api" name="test_generate_chart_endpoint" time="0.036" /><testcase classname="scripts.test_flask_api" name="test_generate_wordcloud_endpoint" time="0.082" /><testcase classname="scripts.test_flask_api" name="test_generate_trend_graph_endpoint" time="0.110" /></testsuite></testsuites>
