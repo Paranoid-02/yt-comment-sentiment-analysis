@@ -158,11 +158,10 @@ pipeline {
                         
                         # 3. Wait for startup with verbose logging
                         echo "Waiting for Flask to start..."
-                        for i in {1..30}; do
-                            if curl -s http://localhost:5000/healthcheck; then
-                                echo "Flask started successfully"
-                                break
-                            fi
+                        if curl -s -f http://localhost:5000/healthcheck; then
+                            echo "Flask health check successful (HTTP 2xx)"
+                            break
+                        fi
                             sleep 1
                             [ $i -eq 30 ] && { echo "❌ Flask failed to start"; cat flask.log; exit 1; }
                         done

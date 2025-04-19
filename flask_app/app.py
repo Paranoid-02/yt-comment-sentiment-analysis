@@ -107,6 +107,10 @@ except Exception as e:
 def home():
     return "Welcome to our flask api"
 
+@app.route('/healthcheck')
+def healthcheck():
+    return "OK", 200
+
 @app.route('/predict_with_timestamps', methods=['POST'])
 def predict_with_timestamps():
     # Ensure model and vectorizer loaded correctly during startup
