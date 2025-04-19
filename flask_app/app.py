@@ -66,7 +66,7 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
     try:
         vectorizer_path = os.path.abspath(vectorizer_path)
         # Set MLflow tracking URI to your server
-        mlflow.set_tracking_uri("http://ec2-13-49-240-199.eu-north-1.compute.amazonaws.com:5000/")
+        mlflow.set_tracking_uri("http://ec2-13-51-160-69.eu-north-1.compute.amazonaws.com:5000/")
         app.logger.info(f"Connecting to MLflow at {mlflow.get_tracking_uri()}")
         client = MlflowClient()
         model_uri = f"models:/{model_name}/{model_version}"

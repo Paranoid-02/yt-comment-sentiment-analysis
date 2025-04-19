@@ -139,7 +139,7 @@ pipeline {
             environment {
                 FLASK_APP = 'flask_app/app.py'
                 FLASK_ENV = 'production'
-                MLFLOW_TRACKING_URI = 'http://ec2-13-49-240-199.eu-north-1.compute.amazonaws.com:5000/'
+                MLFLOW_TRACKING_URI = 'http://ec2-13-51-160-69.eu-north-1.compute.amazonaws.com:5000/'
                 VECTORIZER_PATH = '${WORKSPACE}/tfidf_vectorizer.pkl'
             }
             steps {
