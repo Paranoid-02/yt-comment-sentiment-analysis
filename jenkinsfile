@@ -146,14 +146,26 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh '''
-                        # Start Flask app in background
+                        # 1. Kill any existing Flask processes
+                        pkill -f "flask run" || true
+                        
+                        # 2. Start Flask with debug logging
                         nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
-                        echo $! > flask.pid  # Save PID for later cleanup
+                        FLASK_PID=$!
+                        echo $FLASK_PID > flask.pid
                         
-                        # Wait for app to start (max 30 seconds)
-                        timeout 30 bash -c 'until curl -s http://localhost:5000/healthcheck; do sleep 1; done'
+                        # 3. Wait for startup with verbose logging
+                        echo "Waiting for Flask to start..."
+                        for i in {1..30}; do
+                            if curl -s http://localhost:5000/healthcheck; then
+                                echo "Flask started successfully"
+                                break
+                            fi
+                            sleep 1
+                            [ $i -eq 30 ] && { echo "❌ Flask failed to start"; cat flask.log; exit 1; }
+                        done
                         
-                        # Run API tests
+                        # 4. Run tests
                         pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
                     '''
                 }
