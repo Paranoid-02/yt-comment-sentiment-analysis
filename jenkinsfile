@@ -135,57 +135,96 @@ pipeline {
             }
         }
 
-        stage('Deploy & Test Flask API') {
-            environment {
-                FLASK_APP = 'flask_app/app.py'
-                FLASK_ENV = 'production'
-                MLFLOW_TRACKING_URI = 'http://ec2-13-51-160-69.eu-north-1.compute.amazonaws.com:5000/'
-                VECTORIZER_PATH = '${WORKSPACE}/tfidf_vectorizer.pkl'
-            }
-            steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
-                    file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE')
-                ]) {
-                    sh '''
-                        # 1. Setup environment
-                        . venv/bin/activate
-                        cp ${VECTORIZER_FILE} ${VECTORIZER_PATH} # Copy vectorizer to workspace
-                        
-                        # 2. Install exact requirements
-                        pip install -r requirements.txt
-                        
-                        # 3. Start Flask with proper init
-                        echo "Starting Flask with model pre-loading..."
-                        nohup python -c "
-        import os; os.environ['AWS_ACCESS_KEY_ID']='${AWS_ACCESS_KEY_ID}';
-        os.environ['AWS_SECRET_ACCESS_KEY']='${AWS_SECRET_ACCESS_KEY}';
-        from flask_app.app import app; 
-        app.run(host='0.0.0.0', port=5000, debug=False)" > flask.log 2>&1 &
-                        echo $! > flask.pid
-                        
-                        # 4. Enhanced healthcheck - verifies model loaded
-                        echo "Waiting for model initialization..."
-                        for i in {1..30}; do
-                            if curl -s http://localhost:5000/healthcheck | grep -q "Model Loaded"; then
-                                echo "✅ Model ready after $i seconds"
-                                break
-                            fi
-                            sleep 1
-                            [ $i -eq 30 ] && { echo "❌ Model load timeout"; cat flask.log; exit 1; }
-                        done
-                        
-                        # 5. Run tests with model verification
-                        python -m pytest scripts/test_flask_api.py -v \
-                            --junitxml=api-test-results.xml \
-                            --log-cli-level=DEBUG
-                    '''
+    stage('Deploy & Test Flask API') {
+        environment {
+            FLASK_APP = 'flask_app/app.py'
+            FLASK_ENV = 'production'
+            MLFLOW_TRACKING_URI = 'http://ec2-13-51-160-69.eu-north-1.compute.amazonaws.com:5000/'
+            VECTORIZER_PATH = "${WORKSPACE}/flask_app/tfidf_vectorizer.pkl"  // Changed to subdirectory
+        }
+        steps {
+            withCredentials([
+                string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
+                file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE')
+            ]) {
+                sh '''
+                    # 1. Debug workspace structure
+                    echo "Current workspace:"
+                    pwd
+                    ls -la
+                    echo "Jenkins workspace: ${WORKSPACE}"
+                    
+                    # 2. Create target directory if needed
+                    mkdir -p "${WORKSPACE}/flask_app"
+                    
+                    # 3. Copy vectorizer with verification
+                    echo "Copying vectorizer from ${VECTORIZER_FILE} to ${VECTORIZER_PATH}"
+                    cp -v "${VECTORIZER_FILE}" "${VECTORIZER_PATH}" || {
+                        echo "❌ Failed to copy vectorizer";
+                        ls -la "${WORKSPACE}/flask_app/";
+                        exit 1;
+                    }
+                    
+                    # 4. Verify file copy
+                    echo "Vectorizer copy verification:"
+                    ls -la "${VECTORIZER_PATH}"
+                    file "${VECTORIZER_PATH}"
+                    python -c "
+    import joblib;
+    try:
+        v = joblib.load('${VECTORIZER_PATH}');
+        print(f'✅ Vectorizer loaded successfully. Type: {type(v)}')
+    except Exception as e:
+        print(f'❌ Vectorizer load failed: {str(e)}');
+        raise SystemExit(1)
+    "
+                    
+                    # 5. Install requirements
+                    pip install -r requirements.txt
+                    
+                    # 6. Start Flask with absolute paths
+                    echo "Starting Flask..."
+                    nohup python -c "
+    import os, sys;
+    sys.path.append('${WORKSPACE}');
+    os.environ['AWS_ACCESS_KEY_ID']='${AWS_ACCESS_KEY_ID}';
+    os.environ['AWS_SECRET_ACCESS_KEY']='${AWS_SECRET_ACCESS_KEY}';
+    os.environ['VECTORIZER_PATH']='${VECTORIZER_PATH}';
+    from flask_app.app import app;
+    app.run(host='0.0.0.0', port=5000, debug=False)
+    " > flask.log 2>&1 &
+                    echo $! > flask.pid
+                    
+                    # 7. Healthcheck with retries
+                    echo "Waiting for model initialization..."
+                    for i in {1..30}; do
+                        if curl -s http://localhost:5000/healthcheck | grep -q "Model Loaded"; then
+                            echo "✅ Model ready after $i seconds"
+                            break
+                        fi
+                        sleep 1
+                        [ $i -eq 30 ] && { 
+                            echo "❌ Model load timeout"; 
+                            echo "----- Flask Logs -----";
+                            cat flask.log;
+                            echo "----- End Logs -----";
+                            exit 1; 
+                        }
+                    done
+                    
+                    # 8. Run tests with debug output
+                    python -m pytest scripts/test_flask_api.py -v \
+                        --junitxml=api-test-results.xml \
+                        --log-cli-level=DEBUG \
+                        --cov=flask_app \
+                        --cov-report=xml:coverage.xml
+                '''
                 }
             }
         }
     }
-    
+
     post {
         always {
                 sh '''
