@@ -137,44 +137,68 @@ pipeline {
 
         stage('Deploy & Test Flask API') {
             environment {
-                FLASK_ENV = 'production'
-                FLASK_APP = 'flask_app/app.py'
+                FLASK_APP = 'app.py'
+                FLASK_ENV = 'development'  # More verbose logging
+                MLFLOW_TRACKING_URI = 'http://ec2-13-60-211-129.eu-north-1.compute.amazonaws.com:5000/'
             }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
-                    sh '''#!/bin/bash
+                    sh '''
+                        # 1. Activate virtual environment
                         . venv/bin/activate
                         
-                        # 1. Kill any existing Flask processes
-                        pkill -f "flask run" || true
+                        # 2. Install test dependencies
+                        pip install pytest requests || { echo "❌ Failed to install test dependencies"; exit 1; }
                         
-                        # 2. Start Flask with debug logging
+                        # 3. Start Flask with debug output
+                        echo "Starting Flask server..."
                         nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
                         FLASK_PID=$!
                         echo $FLASK_PID > flask.pid
                         
-                        # 3. Wait for startup with verbose logging
-                        echo "Waiting for Flask to start..."
-                        if curl -s -f http://localhost:5000/healthcheck; then
-                            echo "Flask health check successful (HTTP 2xx)"
-                            break
-                        fi
+                        # 4. Wait for server to start (with model loading)
+                        echo "Waiting for model to load..."
+                        for i in {1..60}; do
+                            if curl -s http://localhost:5000/healthcheck | grep -q "OK"; then
+                                echo "✅ Flask and model ready"
+                                break
+                            fi
                             sleep 1
-                            [ $i -eq 30 ] && { echo "❌ Flask failed to start"; cat flask.log; exit 1; }
+                            [ $i -eq 60 ] && { echo "❌ Model loading timeout"; cat flask.log; exit 1; }
                         done
                         
-                        # 4. Run tests
-                        pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
+                        # 5. Run tests with debug output
+                        echo "Running API tests..."
+                        python -m pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml \
+                            --log-level=DEBUG \
+                            --log-cli-level=INFO \
+                            --show-capture=all
+                        
+                        # 6. Capture server logs if tests failed
+                        if [ $? -ne 0 ]; then
+                            echo "----- FLASK SERVER LOGS -----"
+                            cat flask.log
+                            echo "----- END LOGS -----"
+                            exit 1
+                        fi
                     '''
                 }
             }
-        }
     }
     
     post {
+        always {
+            sh '''
+                # Cleanup Flask process
+                [ -f flask.pid ] && kill $(cat flask.pid) || true
+                rm -f flask.pid
+            '''
+            junit 'api-test-results.xml'
+            archiveArtifacts 'flask.log'
+        }
         success {
             echo 'Pipeline succeeded!'
         }
