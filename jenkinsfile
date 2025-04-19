@@ -18,21 +18,11 @@ pipeline {
         
         stage('Setup Python') {
             steps {
-                script {
-                    // Check for Python installation and install if missing
-                    def pythonInstalled = sh(script: 'command -v python3 || command -v python', returnStatus: true) == 0
-                    
-                    if (!pythonInstalled) {
-                        if (isUnix()) {
-                            sh 'sudo apt-get update && sudo apt-get install -y python3 python3-venv'
-                        } else {
-                            bat 'choco install python -y'
-                        }
-                    }
-                    
-                    // Create virtual environment
-                    sh 'python3 -m venv venv || python -m venv venv'
-                }
+                sh '''
+                    python3.11 -m venv venv
+                    . venv/bin/activate
+                    python --version
+                '''
             }
         }
         
@@ -140,7 +130,7 @@ pipeline {
             FLASK_APP = 'flask_app/app.py'
             FLASK_ENV = 'production'
             MLFLOW_TRACKING_URI = 'http://ec2-13-51-160-69.eu-north-1.compute.amazonaws.com:5000/'
-            VECTORIZER_PATH = "${WORKSPACE}/flask_app/tfidf_vectorizer.pkl"  // Changed to subdirectory
+            VECTORIZER_PATH = "${WORKSPACE}/flask_app/tfidf_vectorizer.pkl"
         }
         steps {
             withCredentials([
@@ -150,7 +140,7 @@ pipeline {
             ]) {
                 sh '''#!/bin/bash
                     . venv/bin/activate
-                    
+
                     # 1. Debug workspace structure
                     echo "Current workspace:"
                     pwd
