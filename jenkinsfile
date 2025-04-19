@@ -135,17 +135,26 @@ pipeline {
             }
         }
 
-        stage('Model Promotion') {
+        stage('Deploy & Test Flask API') {
+            environment {
+                FLASK_ENV = 'production'
+                FLASK_APP = 'flask_app/app.py'
+            }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh '''
-                        . venv/bin/activate
+                        # Start Flask app in background
+                        nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
+                        echo $! > flask.pid  # Save PID for later cleanup
                         
-                        # Run promotion
-                        python scripts/promote_model.py
+                        # Wait for app to start (max 30 seconds)
+                        timeout 30 bash -c 'until curl -s http://localhost:5000/healthcheck; do sleep 1; done'
+                        
+                        # Run API tests
+                        pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
                     '''
                 }
             }
