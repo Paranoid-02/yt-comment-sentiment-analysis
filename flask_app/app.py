@@ -1,6 +1,6 @@
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend before importing pyplot
-
+import os
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import io
@@ -64,6 +64,7 @@ def preprocess_comment(comment):
 # Load the model and vectorizer from the model registry and local storage
 def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
     try:
+        vectorizer_path = os.path.abspath(vectorizer_path)
         # Set MLflow tracking URI to your server
         mlflow.set_tracking_uri("http://ec2-13-60-211-129.eu-north-1.compute.amazonaws.com:5000/")
         app.logger.info(f"Connecting to MLflow at {mlflow.get_tracking_uri()}")
@@ -72,7 +73,8 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
         app.logger.info(f"Loading model from URI: {model_uri}")
         model = mlflow.pyfunc.load_model(model_uri)
         app.logger.info("Model loaded successfully.")
-        app.logger.info(f"Loading vectorizer from path: {vectorizer_path}")
+        app.logger.info(f"Loading vectorizer from absolute path: {vectorizer_path}")
+        # app.logger.info(f"Loading vectorizer from path: {vectorizer_path}")
         vectorizer = joblib.load(vectorizer_path)
         app.logger.info("Vectorizer loaded successfully.")
         # Check vectorizer type
@@ -109,7 +111,10 @@ def home():
 
 @app.route('/healthcheck')
 def healthcheck():
-    return "OK", 200
+    if model and vectorizer:
+        return "OK - Model Loaded", 200
+    return "Model Not Loaded", 503
+
 
 @app.route('/predict_with_timestamps', methods=['POST'])
 def predict_with_timestamps():

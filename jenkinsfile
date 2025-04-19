@@ -137,53 +137,49 @@ pipeline {
 
         stage('Deploy & Test Flask API') {
             environment {
-                FLASK_APP = 'app.py'
-                FLASK_ENV = 'development'
+                FLASK_APP = 'flask_app/app.py'
+                FLASK_ENV = 'production'
                 MLFLOW_TRACKING_URI = 'http://ec2-13-60-211-129.eu-north-1.compute.amazonaws.com:5000/'
+                VECTORIZER_PATH = '${WORKSPACE}/tfidf_vectorizer.pkl' // Absolute path
             }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
+                    file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE') // Store vectorizer as Jenkins file credential
                 ]) {
                     sh '''
-                        # 1. Activate virtual environment
+                        # 1. Setup environment
                         . venv/bin/activate
+                        cp ${VECTORIZER_FILE} ${VECTORIZER_PATH} # Copy vectorizer to workspace
                         
-                        # 2. Install test dependencies
-                        pip install pytest requests || { echo "❌ Failed to install test dependencies"; exit 1; }
+                        # 2. Install exact requirements
+                        pip install -r requirements.txt
                         
-                        # 3. Start Flask with debug output
-                        echo "Starting Flask server..."
-                        nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
-                        FLASK_PID=$!
-                        echo $FLASK_PID > flask.pid
+                        # 3. Start Flask with proper init
+                        echo "Starting Flask with model pre-loading..."
+                        nohup python -c "
+        import os; os.environ['AWS_ACCESS_KEY_ID']='${AWS_ACCESS_KEY_ID}';
+        os.environ['AWS_SECRET_ACCESS_KEY']='${AWS_SECRET_ACCESS_KEY}';
+        from flask_app.app import app; 
+        app.run(host='0.0.0.0', port=5000, debug=False)" > flask.log 2>&1 &
+                        echo $! > flask.pid
                         
-                        # 4. Wait for server to start (with model loading)
-                        echo "Waiting for model to load..."
-                        for i in {1..60}; do
-                            if curl -s http://localhost:5000/healthcheck | grep -q "OK"; then
-                                echo "✅ Flask and model ready"
+                        # 4. Enhanced healthcheck - verifies model loaded
+                        echo "Waiting for model initialization..."
+                        for i in {1..30}; do
+                            if curl -s http://localhost:5000/healthcheck | grep -q "Model Loaded"; then
+                                echo "✅ Model ready after $i seconds"
                                 break
                             fi
                             sleep 1
-                            [ $i -eq 60 ] && { echo "❌ Model loading timeout"; cat flask.log; exit 1; }
+                            [ $i -eq 30 ] && { echo "❌ Model load timeout"; cat flask.log; exit 1; }
                         done
                         
-                        # 5. Run tests with debug output
-                        echo "Running API tests..."
-                        python -m pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml \
-                            --log-level=DEBUG \
-                            --log-cli-level=INFO \
-                            --show-capture=all
-                        
-                        # 6. Capture server logs if tests failed
-                        if [ $? -ne 0 ]; then
-                            echo "----- FLASK SERVER LOGS -----"
-                            cat flask.log
-                            echo "----- END LOGS -----"
-                            exit 1
-                        fi
+                        # 5. Run tests with model verification
+                        python -m pytest scripts/test_flask_api.py -v \
+                            --junitxml=api-test-results.xml \
+                            --log-cli-level=DEBUG
                     '''
                 }
             }
@@ -192,14 +188,15 @@ pipeline {
     
     post {
         always {
-            sh '''
-                # Cleanup Flask process
-                [ -f flask.pid ] && kill $(cat flask.pid) || true
-                rm -f flask.pid
-            '''
-            junit 'api-test-results.xml'
-            archiveArtifacts 'flask.log'
-        }
+                sh '''
+                    [ -f flask.pid ] && kill $(cat flask.pid) || true
+                    rm -f flask.pid
+                    echo "----- Server Logs -----"
+                    cat flask.log
+                '''
+                junit 'api-test-results.xml'
+                archiveArtifacts 'flask.log'
+            }
         success {
             echo 'Pipeline succeeded!'
         }
