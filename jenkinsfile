@@ -81,30 +81,39 @@ pipeline {
             }
         }
 
-        stage('Version Data & Code') {
+        stage('Git Versioning') {
+            when { 
+                expression { 
+                    !env.GIT_COMMITTER_NAME?.contains('Jenkins') 
+                }
+            }
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'github-credentials',
-                        usernameVariable: 'Paranoid-02',
-                        passwordVariable: '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'
-                    )
-                ]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'Paranoid-02',
+                    passwordVariable: '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'
+                )]) {
                     sh '''
-                        # Configure Git identity
-                        git config user.name "Jenkins CI"
-                        git config user.email "jenkins@yourdomain.com"
-                        
-                        # Check for changes
+                        # Configure Git (essential in Docker)
+                        git config --global user.name "Jenkins CI"
+                        git config --global user.email "jenkins@mlops.com"
+
+                        # Debug: Show remote URL and changes
+                        git remote -v
+                        git status --porcelain
+
+                        # Only proceed if there are changes
                         if [ -n "$(git status --porcelain)" ]; then
-                            echo "Changes detected - committing..."
+                            echo "📌 Changes detected - committing..."
                             git add .
-                            git commit -m "[Jenkins] Automated update (Build ${BUILD_NUMBER})"
-                            
-                            # Push using authenticated URL
-                            git push https://${GIT_USER}:${GIT_TOKEN}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
+                            git commit -m "[Jenkins] Update DVC tracking (Build ${BUILD_NUMBER})" || exit 0
+
+                            # Push using authenticated URL (CRITICAL FIX)
+                            git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
+
+                            echo "✅ Successfully pushed changes"
                         else
-                            echo "No changes to commit"
+                            echo "🔄 No changes to commit"
                         fi
                     '''
                 }
