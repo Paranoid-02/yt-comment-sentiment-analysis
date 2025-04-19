@@ -92,8 +92,8 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'github-credentials',
-                    usernameVariable: GIT_USERNAME,
-                    passwordVariable: GIT_TOKEN
+                    usernameVariable: 'GIT_USERNAME',
+                    passwordVariable: 'GIT_TOKEN'
                 )]) {
                     sh '''
                         # Configure Git (essential in Docker)
