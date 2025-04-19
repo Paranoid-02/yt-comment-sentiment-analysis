@@ -96,9 +96,9 @@ pipeline {
                         
                         # Run tests
                         pytest -v --junitxml=test-results.xml \\
-                            test_load_model.py \\
-                            test_model_signature.py \\
-                            test_model_performance.py
+                            scripts/test_load_model.py \\
+                            scripts/test_model_signature.py \\
+                            scripts/test_model_performance.py
                     '''
                 }
                 junit 'test-results.xml'
