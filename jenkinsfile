@@ -4,6 +4,8 @@ pipeline {
     environment {
         AWS_DEFAULT_REGION = 'eu-north-1'
         GITHUB_REPO_URL = 'https://github.com/Paranoid-02/yt-comment-sentiment-analysis.git'
+        GIT_USERNAME = 'Paranoid-02'
+        GIT_TOKEN = credentials('github-token')
     }
     
     stages {
@@ -90,8 +92,8 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'github-credentials',
-                    usernameVariable: 'Paranoid-02',
-                    passwordVariable: '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'
+                    usernameVariable: GIT_USERNAME,
+                    passwordVariable: GIT_TOKEN
                 )]) {
                     sh '''
                         # Configure Git (essential in Docker)
