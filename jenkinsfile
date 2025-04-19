@@ -44,6 +44,8 @@ pipeline {
                     
                     # Install core dependencies FIRST
                     pip install --upgrade pip wheel setuptools
+                    pip install numpy pandas scipy scikit-learn matplotlib seaborn
+                    pip install -r requirements.txt
                     
                     # Install DVC with AWS/S3 support
                     pip install 'dvc[s3]>=3.0.0'  # The quotes prevent shell interpretation
