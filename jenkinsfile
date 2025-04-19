@@ -148,7 +148,9 @@ pipeline {
                 string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
                 file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE')
             ]) {
-                sh '''
+                sh '''#!/bin/bash
+                    . venv/bin/activate
+                    
                     # 1. Debug workspace structure
                     echo "Current workspace:"
                     pwd
