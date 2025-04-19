@@ -134,6 +134,26 @@ pipeline {
                 }
             }
         }
+
+        stage('Model Promotion') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''
+                        . venv/bin/activate
+                        
+                        # Run promotion script
+                        python promote_model.py
+                        
+                        # Verify promotion
+                        echo "Current Production Model:"
+                        mlflow models get-current-production --name yt_chrome_plugin_model
+                    '''
+                }
+            }
+        }
     }
     
     post {
