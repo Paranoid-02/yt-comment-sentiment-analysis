@@ -138,7 +138,7 @@ pipeline {
         stage('Deploy & Test Flask API') {
             environment {
                 FLASK_APP = 'app.py'
-                FLASK_ENV = 'development'  # More verbose logging
+                FLASK_ENV = 'development'
                 MLFLOW_TRACKING_URI = 'http://ec2-13-60-211-129.eu-north-1.compute.amazonaws.com:5000/'
             }
             steps {
