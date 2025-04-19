@@ -145,7 +145,7 @@ pipeline {
                         . venv/bin/activate
                         
                         # Run promotion script
-                        python promote_model.py
+                        python scripts/promote_model.py
                         
                         # Verify promotion
                         echo "Current Production Model:"
