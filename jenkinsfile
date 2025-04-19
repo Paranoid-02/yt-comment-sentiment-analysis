@@ -88,91 +88,49 @@ pipeline {
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
-                    sh """
-                        #!/bin/bash -e
-                        # Use python/pytest from venv explicitly
-                        echo "Running model tests using venv..."
-                        PYTHON_EXEC=$(pwd)/venv/bin/python
-                        PIP_EXEC=$(pwd)/venv/bin/pip
-                        PYTEST_EXEC=$(pwd)/venv/bin/pytest
-
-                        # Verify pytest is installed
-                        if ! \${PIP_EXEC} show pytest &> /dev/null; then
-                            echo "pytest not found, installing..."
-                            \${PIP_EXEC} install pytest
-                        fi
-
-                        echo "Running pytest..."
-                        # Execute pytest, pointing to the test files
-                        # -v for verbose output
-                        # --junitxml generates report for Jenkins
-                        # Pass AWS credentials as env vars (already done by withCredentials)
-                        \${PYTEST_EXEC} -v --junitxml=test-results.xml test_load_model.py test_model_signature.py test_model_performance.py
-
-                        echo "✅ Model tests finished."
-                    """ // End sh block
-                } // End withCredentials
-
-                // Publish test results (requires JUnit plugin in Jenkins)
-                // This step runs outside the sh block but after it completes
+                    sh '''#!/bin/bash
+                        . venv/bin/activate
+                        
+                        # Install pytest if missing
+                        pip install pytest || true
+                        
+                        # Run tests
+                        pytest -v --junitxml=test-results.xml \\
+                            test_load_model.py \\
+                            test_model_signature.py \\
+                            test_model_performance.py
+                    '''
+                }
                 junit 'test-results.xml'
             }
         }
 
         stage('Git Versioning') {
             when {
-                expression {
-                    !env.GIT_COMMITTER_NAME?.contains('Jenkins')
+                expression { 
+                    !env.GIT_COMMITTER_NAME?.contains('Jenkins') 
                 }
             }
             steps {
-                // Use the CORRECT credential ('github-credentials') of type 'Username with password'
                 withCredentials([usernamePassword(
-                    credentialsId: 'github-credentials',      // Credential ID in Jenkins
-                    usernameVariable: 'UNUSED_USERNAME',      // Variable for username (can ignore if using env.GIT_USERNAME)
-                    passwordVariable: 'GH_TOKEN_FROM_CRED'    // Variable for the password (PAT) - USE THIS!
+                    credentialsId: 'github-credentials',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_TOKEN'
                 )]) {
-                    sh """
-                        #!/bin/bash -e
-                        # Configure Git
-                        git config --global user.name "Jenkins CI"
-                        git config --global user.email "jenkins@mlops.com" # Change this email
-
-                        # Debug: Verify the token variable is set inside shell
-                        echo "DEBUG SHELL: GH_TOKEN_FROM_CRED variable is set."
-                        # Check the variable passed by withCredentials
-                        if [ -z "${GH_TOKEN_FROM_CRED}" ]; then
-                           echo "ERROR SHELL: GH_TOKEN_FROM_CRED is empty!"
-                           exit 1 # Fail if token is unexpectedly empty
-                        fi
-                        # Also check the environment variable for username
-                        if [ -z "${GIT_USERNAME}" ]; then
-                           echo "ERROR SHELL: GIT_USERNAME env var is empty!"
-                           exit 1
-                        fi
-
-                        # Debug: Show remote URL and changes
-                        git remote -v
-                        git status --porcelain
-
-                        # Only proceed if there are changes
-                        # Escape \$ for shell command substitution $(...)
-                        if [ -n "\$(git status --porcelain)" ]; then
+                    sh '''#!/bin/bash
+                        git config user.name "Jenkins CI"
+                        git config user.email "jenkins@mlops.com"
+                        
+                        if [ -n "$(git status --porcelain)" ]; then
                             echo "📌 Changes detected - committing..."
                             git add .
-                            # Escape \$ for shell environment variable ${BUILD_NUMBER}
-                            git commit -m "[Jenkins] Update DVC tracking (Build \${BUILD_NUMBER})" || echo "Commit failed or nothing to commit, continuing..."
-
-                            # Push using authenticated URL
-                            # NO backslash needed for Groovy variables ${GIT_USERNAME} and ${GH_TOKEN_FROM_CRED}
-                            echo "Attempting git push..."
-                            git push https://${GIT_USERNAME}:${GH_TOKEN_FROM_CRED}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
-
+                            git commit -m "[Jenkins] Update DVC tracking (Build ${BUILD_NUMBER})" || exit 0
+                            git push https://${GIT_USER}:${GIT_TOKEN}@github.com/Paranoid-02/yt-comment-sentiment-analysis.git HEAD:main
                             echo "✅ Successfully pushed changes"
                         else
                             echo "🔄 No changes to commit"
                         fi
-                    """
+                    '''
                 }
             }
         }
