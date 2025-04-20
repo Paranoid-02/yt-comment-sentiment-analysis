@@ -20,11 +20,22 @@ pipeline {
         stage('Setup Python') {
             steps {
                 sh """
+                    # Install pyenv if not present
+                    if ! command -v pyenv &> /dev/null; then
+                        curl https://pyenv.run | bash
+                        export PATH="$HOME/.pyenv/bin:$PATH"
+                        eval "$(pyenv init -)"
+                        eval "$(pyenv virtualenv-init -)"
+                    fi
+                    
+                    # Install specific Python version
+                    pyenv install ${PYTHON_VERSION} --skip-existing
+                    pyenv global ${PYTHON_VERSION}
+                    
                     # Create virtual environment
-                    python3.11 -m venv venv
+                    python -m venv venv
                     . venv/bin/activate
                     
-                    # Verify Python version
                     python --version
                     pip install --upgrade pip
                 """
