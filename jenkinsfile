@@ -136,50 +136,42 @@ pipeline {
 
         stage('Deploy & Test Flask API') {
             environment {
-                FLASK_APP = 'flask_app/app.py'
                 FLASK_ENV = 'production'
-                MLFLOW_TRACKING_URI = 'http://ec2-16-171-182-207.eu-north-1.compute.amazonaws.com:5000/'
-                VECTORIZER_PATH = "${WORKSPACE}/flask_app/tfidf_vectorizer.pkl"
+                FLASK_APP = 'flask_app/app.py'
             }
             steps {
                 withCredentials([
                     string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY'),
-                    file(credentialsId: 'tfidf-vectorizer', variable: 'VECTORIZER_FILE')
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
-                    sh '''#!/bin/bash
-                        . venv/bin/activate
-                        
-                        # Setup directories and copy vectorizer
-                        mkdir -p "${WORKSPACE}/flask_app"
-                        cp -v "${VECTORIZER_FILE}" "${VECTORIZER_PATH}"
-                        
-                        # Start Flask server in background
+                    sh '''
+                        # Start Flask app in background
                         nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
-                        echo $! > flask.pid
+                        echo $! > flask.pid  # Save PID for later cleanup
                         
-                        # Wait for server to start
-                        sleep 10
+                        # Wait for app to start (max 30 seconds)
+                        echo "Waiting for Flask API to start..."
+                        sleep 30
                         
                         # Run API tests
                         pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
                     '''
                 }
             }
+            post {
+                always {
+                    sh '''
+                        # Stop Flask app
+                        [ -f flask.pid ] && kill $(cat flask.pid) || true
+                        rm -f flask.pid
+                    '''
+                    junit 'api-test-results.xml'
+                }
+            }
         }
     }
 
     post {
-        always {
-                sh '''
-                    [ -f flask.pid ] && kill $(cat flask.pid) || true
-                    rm -f flask.pid
-                    echo "----- Server Logs -----"
-                    cat flask.log
-                '''
-                junit 'api-test-results.xml'
-                archiveArtifacts 'flask.log'
-            }
         success {
             echo 'Pipeline succeeded!'
         }

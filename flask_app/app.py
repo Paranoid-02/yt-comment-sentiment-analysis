@@ -58,7 +58,7 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
     return model, vectorizer
 
 # Initialize the model and vectorizer
-model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "18", "./tfidf_vectorizer.pkl")
+model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "20", "./tfidf_vectorizer.pkl")
 
 @app.route('/predict_with_timestamps', methods=['POST'])
 def predict_with_timestamps():
