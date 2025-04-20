@@ -149,7 +149,7 @@ pipeline {
                         
                         # Wait for app to start (max 30 seconds)
                         echo "Waiting for Flask API to start..."
-                        sleep 30
+                        sleep 60
                         
                         # Run API tests
                         pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
@@ -197,7 +197,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy ELK Stack') {
             steps {
                 dir('kubernetes/elk') {
