@@ -178,7 +178,22 @@ pipeline {
                     sh '''
                         docker login -u $DOCKER_USER -p $DOCKER_PASS
                         docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:latest .
-                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest
+                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest   
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                // withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) 
+                {
+                    sh '''
+                        kubectl apply -f kubernetes/deployment.yaml
+                        kubectl apply -f kubernetes/service.yaml
+                        
+                        # Verify deployment
+                        kubectl rollout status deployment/yt-comment-analysis
                     '''
                 }
             }
