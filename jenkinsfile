@@ -142,6 +142,7 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh '''
+                        . venv/bin/activate
                         # Start Flask app in background
                         nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
                         echo $! > flask.pid  # Save PID for later cleanup
