@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yt-comment-analysis
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: yt-comment-analysis
+  template:
+    metadata:
+      labels:
+        app: yt-comment-analysis
+    spec:
+      containers:
+      - name: app
+        image: paranoid02/yt-comment-sentiment-analysis:latest
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - secretRef:
+            name: app-secrets
+
+---
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: yt-comment-service
+spec:
+  selector:
+    app: yt-comment-analysis
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+  type: LoadBalancer
