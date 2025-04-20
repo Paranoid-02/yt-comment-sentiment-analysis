@@ -16,6 +16,9 @@ from nltk.stem import WordNetLemmatizer
 from mlflow.tracking import MlflowClient
 import matplotlib.dates as mdates
 
+import logging
+from pythonjsonlogger import jsonlogger
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
@@ -60,8 +63,22 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
 # Initialize the model and vectorizer
 model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "21", "./tfidf_vectorizer.pkl")
 
+def setup_logging():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    
+    handler = logging.StreamHandler()
+    formatter = jsonlogger.JsonFormatter(
+        '%(asctime)s %(levelname)s %(message)s %(module)s %(funcName)s'
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+setup_logging()
+logger = logging.getLogger(__name__)
+
 @app.route('/predict_with_timestamps', methods=['POST'])
-def predict_with_timestamps():
+def predict_with_timestamps():    
     # Ensure model and vectorizer loaded correctly during startup
     if not model or not vectorizer:
         return jsonify({"error": "Model or Vectorizer not loaded. Check server logs."}), 503 # Service Unavailable
@@ -184,6 +201,11 @@ def predict_with_timestamps():
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    logger.info("Prediction request received", extra={
+        "route": "/predict",
+        "method": request.method,
+        "client_ip": request.remote_addr
+    })
     # Ensure model and vectorizer loaded correctly during startup
     if not model or not vectorizer:
          return jsonify({"error": "Model or Vectorizer not loaded. Check server logs."}), 503 # Service Unavailable

@@ -197,6 +197,43 @@ pipeline {
                 }
             }
         }
+        
+        stage('Deploy ELK Stack') {
+            steps {
+                dir('kubernetes/elk') {
+                    sh '''
+                        kubectl apply -f elasticsearch.yaml
+                        kubectl apply -f kibana.yaml
+                        
+                        # Wait for Elasticsearch to be ready
+                        kubectl wait --for=condition=ready pod -l elasticsearch.k8s.elastic.co/cluster-name=elasticsearch --timeout=300s
+                        
+                        kubectl apply -f filebeat.yaml
+                    '''
+                }
+            }
+        }
+
+        stage('Verify ELK Stack') {
+            steps {
+                script {
+                    // Get Kibana URL
+                    def kibana_url = sh(returnStdout: true, script: """
+                        minikube service kibana-kb-http --url || \\
+                        kubectl get svc kibana-kb-http -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:5601'
+                    """).trim()
+                    
+                    echo "Kibana Dashboard available at: ${kibana_url}"
+                    
+                    // Simple log check
+                    sh '''
+                        sleep 30 # Wait for logs to populate
+                        kubectl exec -it $(kubectl get pods -l app=yt-comment-analysis -o jsonpath='{.items[0].metadata.name}') -- \\
+                            curl -s http://elasticsearch-es-http:9200/_cat/indices?v
+                    '''
+                }
+            }
+        }
     }
 
     post {
