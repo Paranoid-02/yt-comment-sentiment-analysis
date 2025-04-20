@@ -144,12 +144,12 @@ pipeline {
                     sh '''
                         . venv/bin/activate
                         # Start Flask app in background
-                        nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
+                        nohup python -m flask run --host=0.0.0.0 --port=5050 > flask.log 2>&1 &
                         echo $! > flask.pid  # Save PID for later cleanup
                         
                         # Wait for app to start (max 30 seconds)
                         echo "Waiting for Flask API to start..."
-                        sleep 60
+                        sleep 30
                         
                         # Run API tests
                         pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
