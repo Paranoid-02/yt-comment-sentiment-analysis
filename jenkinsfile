@@ -19,25 +19,26 @@ pipeline {
         
         stage('Setup Python') {
             steps {
-                sh """
-                    # Install specific Python version if not present
-                    if ! command -v python3.11 &> /dev/null; then
-                        echo "Installing Python ${PYTHON_VERSION}..."
-                        sudo apt-get update
-                        sudo apt-get install -y software-properties-common
-                        sudo add-apt-repository -y ppa:deadsnakes/ppa
-                        sudo apt-get update
-                        sudo apt-get install -y python${PYTHON_VERSION} python${PYTHON_VERSION}-venv
+                sh '''
+                    # Install pyenv if not present
+                    if ! command -v pyenv &> /dev/null; then
+                        curl https://pyenv.run | bash
+                        export PATH="$HOME/.pyenv/bin:$PATH"
+                        eval "$(pyenv init -)"
+                        eval "$(pyenv virtualenv-init -)"
                     fi
                     
-                    # Create virtual environment with specific Python version
-                    python${PYTHON_VERSION} -m venv venv
+                    # Install specific Python version
+                    pyenv install ${PYTHON_VERSION} --skip-existing
+                    pyenv global ${PYTHON_VERSION}
+                    
+                    # Create virtual environment
+                    python -m venv venv
                     . venv/bin/activate
                     
-                    # Verify Python version
                     python --version
                     pip install --upgrade pip
-                """
+                '''.stripIndent()
             }
         }
         
