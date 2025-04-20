@@ -20,18 +20,3 @@ spec:
         envFrom:
         - secretRef:
             name: app-secrets
-
----
-# service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: yt-comment-service
-spec:
-  selector:
-    app: yt-comment-analysis
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 5000
-  type: LoadBalancer
