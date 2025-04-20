@@ -167,6 +167,22 @@ pipeline {
                 }
             }
         }
+
+        stage('Build and Push Docker Image') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'DockerHubCred',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        docker login -u $DOCKER_USER -p $DOCKER_PASS
+                        docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:latest .
+                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest
+                    '''
+                }
+            }
+        }
     }
 
     post {
