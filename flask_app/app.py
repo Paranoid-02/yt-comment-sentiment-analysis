@@ -15,9 +15,8 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from mlflow.tracking import MlflowClient
 import matplotlib.dates as mdates
-
-# import logging
-# from pythonjsonlogger import jsonlogger
+from prometheus_metrics import *
+import time
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -63,19 +62,33 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
 # Initialize the model and vectorizer
 model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "22", "./tfidf_vectorizer.pkl")
 
-# def setup_logging():
-#     logger = logging.getLogger()
-#     logger.setLevel(logging.INFO)
-    
-#     handler = logging.StreamHandler()
-#     formatter = jsonlogger.JsonFormatter(
-#         '%(asctime)s %(levelname)s %(message)s %(module)s %(funcName)s'
-#     )
-#     handler.setFormatter(formatter)
-#     logger.addHandler(handler)
+@app.before_request
+def before_request():
+    request.start_time = time.time()
 
-# setup_logging()
-# logger = logging.getLogger(__name__)
+@app.after_request
+def after_request(response):
+    latency = time.time() - request.start_time
+    REQUEST_LATENCY.labels(
+        method=request.method,
+        endpoint=request.path
+    ).observe(latency)
+    
+    REQUEST_COUNT.labels(
+        method=request.method,
+        endpoint=request.path,
+        http_status=response.status_code
+    ).inc()
+    
+    if response.status_code >= 400:
+        ERROR_COUNT.labels(error_type=str(response.status_code)).inc()
+    
+    return response
+
+@app.route('/metrics')
+def metrics():
+    from prometheus_client import generate_latest
+    return generate_latest(), 200, {'Content-Type': 'text/plain'}
 
 @app.route('/predict_with_timestamps', methods=['POST'])
 def predict_with_timestamps():    
@@ -201,11 +214,6 @@ def predict_with_timestamps():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    # logger.info("Prediction request received", extra={
-    #     "route": "/predict",
-    #     "method": request.method,
-    #     "client_ip": request.remote_addr
-    # })
     # Ensure model and vectorizer loaded correctly during startup
     if not model or not vectorizer:
          return jsonify({"error": "Model or Vectorizer not loaded. Check server logs."}), 503 # Service Unavailable

@@ -198,40 +198,64 @@ pipeline {
             }
         }
 
-        stage('Deploy ELK Stack') {
+        stage('Deploy Monitoring Stack') {
             steps {
-                dir('kubernetes/elk') {
+                dir('kubernetes/monitoring') {
+                    // Install Prometheus Operator if needed
                     sh '''
-                        kubectl apply -f elasticsearch.yaml
-                        kubectl apply -f kibana.yaml
+                        kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.68.0/bundle.yaml || true
+                    '''
+                    
+                    // Deploy our monitoring components
+                    sh '''
+                        kubectl apply -f prometheus-configmap.yaml
+                        kubectl apply -f prometheus-deployment.yaml
+                        kubectl apply -f grafana-deployment.yaml
                         
-                        # Wait for Elasticsearch to be ready
-                        kubectl wait --for=condition=ready pod -l elasticsearch.k8s.elastic.co/cluster-name=elasticsearch --timeout=300s
-                        
-                        kubectl apply -f filebeat.yaml
+                        # Wait for components to be ready
+                        kubectl wait --for=condition=available deployment/prometheus --timeout=300s
+                        kubectl wait --for=condition=available deployment/grafana --timeout=300s
                     '''
                 }
             }
         }
 
-        stage('Verify ELK Stack') {
+        stage('Configure Grafana') {
             steps {
                 script {
-                    // Get Kibana URL
-                    def kibana_url = sh(returnStdout: true, script: """
-                        minikube service kibana-kb-http --url || \\
-                        kubectl get svc kibana-kb-http -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:5601'
+                    // Get Grafana URL
+                    def grafana_url = sh(returnStdout: true, script: """
+                        minikube service grafana --url || \\
+                        kubectl get svc grafana -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:3000'
                     """).trim()
                     
-                    echo "Kibana Dashboard available at: ${kibana_url}"
+                    // Import dashboard (using API)
+                    sh """
+                        curl -X POST \
+                        -H "Content-Type: application/json" \
+                        -d @kubernetes/monitoring/grafana-dashboards/flask-metrics-dashboard.json \
+                        "${grafana_url}/api/dashboards/import"
+                    """
                     
-                    // Simple log check
-                    sh '''
-                        sleep 30 # Wait for logs to populate
-                        kubectl exec -it $(kubectl get pods -l app=yt-comment-analysis -o jsonpath='{.items[0].metadata.name}') -- \\
-                            curl -s http://elasticsearch-es-http:9200/_cat/indices?v
-                    '''
+                    echo "Grafana Dashboard available at: ${grafana_url}"
                 }
+            }
+        }
+
+        stage('Verify Monitoring') {
+            steps {
+                sh '''
+                    # Check Prometheus is scraping
+                    kubectl exec -it $(kubectl get pods -l app=prometheus -o jsonpath='{.items[0].metadata.name}') -- \\
+                        curl -s http://localhost:9090/api/v1/targets | grep flask-app
+                    
+                    # Make test request to generate metrics
+                    APP_URL=$(kubectl get svc yt-comment-service -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:80')
+                    curl -X POST "${APP_URL}/predict" -H "Content-Type: application/json" -d '{"text":"sample"}'
+                    
+                    # Check metrics endpoint
+                    curl -s "${APP_URL}/metrics" | grep flask_app_request_count
+                '''
             }
         }
     }
