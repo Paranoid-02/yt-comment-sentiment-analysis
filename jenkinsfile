@@ -144,7 +144,7 @@ pipeline {
                     sh '''
                         . venv/bin/activate
                         pip install pytest prometheus-client
-                        
+
                         # Start Flask app in background
                         nohup python -m flask run --host=0.0.0.0 --port=5000 > flask.log 2>&1 &
                         echo $! > flask.pid  # Save PID for later cleanup
@@ -263,6 +263,16 @@ pipeline {
     }
 
     post {
+        always {
+            sh '''
+                # Clean up Docker images
+                docker rmi -f $(docker images -q)
+                
+                # Clean up Kubernetes resources
+                kubectl delete -f kubernetes/deployment.yaml || true
+                kubectl delete -f kubernetes/service.yaml || true
+            '''
+        }
         success {
             echo 'Pipeline succeeded!'
         }
