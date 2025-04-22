@@ -151,7 +151,7 @@ pipeline {
                         
                         # Wait for app to start (max 30 seconds)
                         echo "Waiting for Flask API to start..."
-                        sleep 60
+                        sleep 20
                         
                         # Run API tests
                         pytest scripts/test_flask_api.py -v --junitxml=api-test-results.xml
