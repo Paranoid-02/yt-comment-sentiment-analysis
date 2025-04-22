@@ -1,39 +1,126 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
 metadata:
   name: prometheus
+  labels:
+    app: prometheus
 spec:
-  replicas: 1
-  selector:
+  serviceAccountName: prometheus
+  serviceMonitorSelector:
     matchLabels:
-      app: prometheus
-  template:
-    metadata:
-      labels:
-        app: prometheus
-    spec:
-      containers:
-      - name: prometheus
-        image: prom/prometheus:v2.51.2
-        ports:
-        - containerPort: 9090
-        volumeMounts:
-        - name: config-volume
-          mountPath: /etc/prometheus
-      volumes:
-      - name: config-volume
-        configMap:
-          name: prometheus-config
+      release: prometheus
+  podMonitorSelector: {}
+  resources:
+    requests:
+      memory: 400Mi
+      cpu: 200m
+    limits:
+      memory: 2Gi
+  enableAdminAPI: false
+  additionalScrapeConfigs:
+    name: additional-scrape-configs
+    key: prometheus-additional.yaml
+  retention: 10d
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+  ruleSelector:
+    matchLabels:
+      role: prometheus-rulefiles
+      prometheus: prometheus
+  alerting:
+    alertmanagers:
+    - namespace: default
+      name: alertmanager
+      port: web
+
 ---
+
 apiVersion: v1
 kind: Service
 metadata:
   name: prometheus
+  labels:
+    app: prometheus
 spec:
   type: NodePort
   ports:
-  - port: 9090
+  - name: web
+    port: 9090
     targetPort: 9090
-    nodePort: 30090
+    nodePort: 30909
   selector:
     app: prometheus
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-operator
+  labels:
+    app: prometheus-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-operator
+  template:
+    metadata:
+      labels:
+        app: prometheus-operator
+    spec:
+      serviceAccountName: prometheus
+      containers:
+      - name: prometheus-operator
+        image: quay.io/prometheus-operator/prometheus-operator:v0.68.0
+        args:
+        - "--kubelet-service=kube-system/kubelet"
+        - "--logtostderr=true"
+        - "--config-reloader-image=quay.io/prometheus-operator/configmap-reload:v0.0.1"
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          limits:
+            cpu: 200m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+
+---
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prometheus-operator
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: prometheus-operator
+  endpoints:
+  - port: http
+    interval: 30s
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-additional-scrape-configs
+data:
+  prometheus-additional.yaml: |
+    - job_name: 'flask-app'
+      scrape_interval: 15s
+      static_configs:
+      - targets: ['yt-comment-service.default.svc.cluster.local:5000']

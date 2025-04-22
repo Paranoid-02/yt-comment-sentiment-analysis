@@ -200,23 +200,26 @@ pipeline {
             }
         }
 
-        stage('Deploy Monitoring Stack') {
+        stage('Deploy Monitoring') {
             steps {
                 dir('kubernetes/monitoring') {
-                    // Install Prometheus Operator if needed
                     sh '''
-                        kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.68.0/bundle.yaml || true
-                    '''
-                    
-                    // Deploy our monitoring components
-                    sh '''
+                        # Apply RBAC first
+                        kubectl apply -f prometheus-rbac.yaml
+                        
+                        # Install Operator
+                        kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.68.0/bundle.yaml
+                        sleep 10 # Wait for CRDs to register
+                        
+                        # Deploy our monitoring stack
                         kubectl apply -f prometheus-configmap.yaml
                         kubectl apply -f prometheus-deployment.yaml
                         kubectl apply -f grafana-deployment.yaml
+                        kubectl apply -f flask-service-monitor.yaml
                         
-                        # Wait for components to be ready
-                        kubectl wait --for=condition=available deployment/prometheus --timeout=300s
-                        kubectl wait --for=condition=available deployment/grafana --timeout=300s
+                        # Verify
+                        kubectl get servicemonitors
+                        kubectl get prometheuses
                     '''
                 }
             }
@@ -265,12 +268,17 @@ pipeline {
     post {
         always {
             sh '''
+                # Stop docker image
+                docker stop $(docker ps -q)
+
+                sleep 10
+
                 # Clean up Docker images
                 docker rmi -f $(docker images -q)
                 
                 # Clean up Kubernetes resources
-                kubectl delete -f kubernetes/deployment.yaml || true
-                kubectl delete -f kubernetes/service.yaml || true
+                kubectl delete deployment yt-comment-analysis || true
+                kubectl delete service yt-comment-service || true
             '''
         }
         success {
