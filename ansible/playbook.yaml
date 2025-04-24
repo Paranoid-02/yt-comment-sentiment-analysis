@@ -1,0 +1,13 @@
+---
+- name: Deploy Flask App to Kubernetes
+  hosts: kubernetes_nodes
+  become: yes
+  gather_facts: yes
+  roles:
+    - role: deploy-flask
+      vars:
+        app_name: "yt-comment-analysis"
+        image_name: "paranoid02/yt-comment-sentiment-analysis:latest"
+        replicas: 3
+        service_port: 80
+        target_port: 5000

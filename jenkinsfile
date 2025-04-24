@@ -186,101 +186,110 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                        kubectl apply -f kubernetes/deployment.yaml
-                        kubectl apply -f kubernetes/service.yaml
+        // stage('Deploy to Kubernetes') {
+        //     steps {
+        //         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+        //             sh '''
+        //                 kubectl apply -f kubernetes/deployment.yaml
+        //                 kubectl apply -f kubernetes/service.yaml
                         
-                        # Verify deployment
-                        kubectl rollout status deployment/yt-comment-analysis
-                    '''
+        //                 # Verify deployment
+        //                 kubectl rollout status deployment/yt-comment-analysis
+        //             '''
+        //         }
+        //     }
+        // }
+
+        stage('Deploy with Ansible') {
+            steps {
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ansible-ssh-key',
+                    keyFileVariable: 'SSH_KEY'
+                )]) {
+                    dir('ansible') {
+                        sh '''
+                            # Install Ansible if needed
+                            pip install ansible==8.6.1
+                            
+                            # Run the playbook
+                            ansible-playbook -i inventory.ini playbook.yaml \
+                                --private-key=$SSH_KEY \
+                                --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
+                            
+                            # Verify deployment
+                            kubectl get pods -l app=yt-comment-analysis
+                        '''
+                    }
                 }
             }
         }
 
-        stage('Deploy Monitoring') {
-            steps {
-                dir('kubernetes/monitoring') {
-                    sh '''
-                        # Apply RBAC first
-                        kubectl apply -f prometheus-rbac.yaml
+        // stage('Deploy Monitoring') {
+        //     steps {
+        //         dir('kubernetes/monitoring') {
+        //             sh '''
+        //                 # Apply RBAC first
+        //                 kubectl apply -f prometheus-rbac.yaml
                         
-                        # Install Operator
-                        kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.68.0/bundle.yaml
-                        sleep 10 # Wait for CRDs to register
+        //                 # Install Operator
+        //                 kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.68.0/bundle.yaml
+        //                 sleep 10 # Wait for CRDs to register
                         
-                        # Deploy our monitoring stack
-                        kubectl apply -f prometheus-configmap.yaml
-                        kubectl apply -f prometheus-deployment.yaml
-                        kubectl apply -f grafana-deployment.yaml
-                        kubectl apply -f flask-service-monitor.yaml
+        //                 # Deploy our monitoring stack
+        //                 kubectl apply -f prometheus-configmap.yaml
+        //                 kubectl apply -f prometheus-deployment.yaml
+        //                 kubectl apply -f grafana-deployment.yaml
+        //                 kubectl apply -f flask-service-monitor.yaml
                         
-                        # Verify
-                        kubectl get servicemonitors
-                        kubectl get prometheuses
-                    '''
-                }
-            }
-        }
+        //                 # Verify
+        //                 kubectl get servicemonitors
+        //                 kubectl get prometheuses
+        //             '''
+        //         }
+        //     }
+        // }
 
-        stage('Configure Grafana') {
-            steps {
-                script {
-                    // Get Grafana URL
-                    def grafana_url = sh(returnStdout: true, script: """
-                        minikube service grafana --url || \\
-                        kubectl get svc grafana -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:3000'
-                    """).trim()
+        // stage('Configure Grafana') {
+        //     steps {
+        //         script {
+        //             // Get Grafana URL
+        //             def grafana_url = sh(returnStdout: true, script: """
+        //                 minikube service grafana --url || \\
+        //                 kubectl get svc grafana -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:3000'
+        //             """).trim()
                     
-                    // Import dashboard (using API)
-                    sh """
-                        curl -X POST \
-                        -H "Content-Type: application/json" \
-                        -d @kubernetes/monitoring/grafana-dashboards/flask-metrics-dashboard.json \
-                        "${grafana_url}/api/dashboards/import"
-                    """
+        //             // Import dashboard (using API)
+        //             sh """
+        //                 curl -X POST \
+        //                 -H "Content-Type: application/json" \
+        //                 -d @kubernetes/monitoring/grafana-dashboards/flask-metrics-dashboard.json \
+        //                 "${grafana_url}/api/dashboards/import"
+        //             """
                     
-                    echo "Grafana Dashboard available at: ${grafana_url}"
-                }
-            }
-        }
+        //             echo "Grafana Dashboard available at: ${grafana_url}"
+        //         }
+        //     }
+        // }
 
-        stage('Verify Monitoring') {
-            steps {
-                sh '''
-                    # Check Prometheus is scraping
-                    kubectl exec -it $(kubectl get pods -l app=prometheus -o jsonpath='{.items[0].metadata.name}') -- \\
-                        curl -s http://localhost:9090/api/v1/targets | grep flask-app
+        // stage('Verify Monitoring') {
+        //     steps {
+        //         sh '''
+        //             # Check Prometheus is scraping
+        //             kubectl exec -it $(kubectl get pods -l app=prometheus -o jsonpath='{.items[0].metadata.name}') -- \\
+        //                 curl -s http://localhost:9090/api/v1/targets | grep flask-app
                     
-                    # Make test request to generate metrics
-                    APP_URL=$(kubectl get svc yt-comment-service -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:80')
-                    curl -X POST "${APP_URL}/predict" -H "Content-Type: application/json" -d '{"text":"sample"}'
+        //             # Make test request to generate metrics
+        //             APP_URL=$(kubectl get svc yt-comment-service -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:80')
+        //             curl -X POST "${APP_URL}/predict" -H "Content-Type: application/json" -d '{"text":"sample"}'
                     
-                    # Check metrics endpoint
-                    curl -s "${APP_URL}/metrics" | grep flask_app_request_count
-                '''
-            }
-        }
+        //             # Check metrics endpoint
+        //             curl -s "${APP_URL}/metrics" | grep flask_app_request_count
+        //         '''
+        //     }
+        // }
     }
 
     post {
-        always {
-            sh '''
-                # Stop docker image
-                docker stop $(docker ps -q)
-
-                sleep 10
-
-                # Clean up Docker images
-                docker rmi -f $(docker images -q)
-                
-                # Clean up Kubernetes resources
-                kubectl delete deployment yt-comment-analysis || true
-                kubectl delete service yt-comment-service || true
-            '''
-        }
         success {
             echo 'Pipeline succeeded!'
         }
