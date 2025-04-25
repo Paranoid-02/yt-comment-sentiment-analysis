@@ -5,7 +5,7 @@
     image_name: "{{ image_name }}"
   tasks:
     - name: Check if Minikube is running
-      command: minikube status
+      command: minikube status --driver=docker
       register: minikube_status
       ignore_errors: yes
       changed_when: false
