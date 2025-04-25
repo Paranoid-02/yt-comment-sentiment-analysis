@@ -8,9 +8,9 @@
       register: minikube_status
       failed_when: false
       changed_when: false
-      
-    - name: Start Minikube
-      shell: minikube start
+    
+    - name: Start Minikube with none driver
+      shell: minikube start --driver=none
       when: "'Running' not in minikube_status.stdout"
 
     - name: Enable registry addon
