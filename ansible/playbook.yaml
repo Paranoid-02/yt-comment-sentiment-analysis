@@ -1,6 +1,5 @@
 ---
 - hosts: local
-  become: true
   vars:
     image_name: "{{ image_name }}"
   tasks:
