@@ -56,9 +56,9 @@
     - name: Apply Kubernetes deployment
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', 'kubernetes/deployment.yaml') | from_yaml }}"
+        definition: "{{ lookup('file', '../kubernetes/deployment.yaml') | from_yaml }}"
 
     - name: Apply Kubernetes service
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', 'kubernetes/service.yaml') | from_yaml }}"
+        definition: "{{ lookup('file', '../kubernetes/service.yaml') | from_yaml }}"
