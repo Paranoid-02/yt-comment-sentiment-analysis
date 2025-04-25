@@ -3,35 +3,41 @@
   connection: local
   vars:
     image_name: "{{ image_name }}"
-    minikube_driver: "docker"
+    minikube_driver: "docker"  # Match your existing driver
   tasks:
-    - name: Check if Minikube is running
-      command: minikube status
+    - name: Check Minikube status
+      command: minikube status -o json
       register: minikube_status
       ignore_errors: yes
       changed_when: false
 
-    - name: Delete existing Minikube cluster if driver mismatch
-      command: minikube delete
-      when: 
-        - "'Running' not in minikube_status.stdout"
-        - "'docker' not in minikube_status.stdout"  # Adjust based on your actual driver
-      async: 60
-      poll: 5
+    - name: Parse Minikube status
+      set_fact:
+        minikube_healthy: "{{ (minikube_status.stdout | from_json).Host == 'Running' 
+                              and (minikube_status.stdout | from_json).Kubelet == 'Running'
+                              and (minikube_status.stdout | from_json).APIServer == 'Running' }}"
+      when: minikube_status.stdout != ""
 
-    - name: Start Minikube with correct driver
-      command: minikube start --driver={{ minikube_driver }}
-      when: "'Running' not in minikube_status.stdout"
-      async: 300
-      poll: 10
-      register: minikube_start
-      until: minikube_start.finished
-      retries: 3
+    - name: Delete and recreate cluster if unhealthy
+      block:
+        - name: Delete existing cluster
+          command: minikube delete
+          async: 60
+          poll: 5
 
-    - name: Verify Minikube is ready
-      command: minikube status
-      register: minikube_ready
-      until: "'Running' in minikube_ready.stdout"
+        - name: Start Minikube
+          command: minikube start --driver={{ minikube_driver }}
+          async: 300
+          poll: 10
+          register: minikube_start
+          until: minikube_start.finished
+          retries: 3
+      when: not minikube_healthy|default(False)
+
+    - name: Verify full cluster health
+      command: minikube status -o json
+      register: health_check
+      until: "(health_check.stdout | from_json).APIServer == 'Running'"
       retries: 10
       delay: 10
 
@@ -40,19 +46,19 @@
       register: addon_result
       changed_when: "'was successfully enabled' in addon_result.stdout"
 
-    - name: Set docker env to minikube
+    - name: Configure Docker environment
       shell: |
         eval $(minikube -p minikube docker-env)
-        docker info
+        docker ps
       args:
         executable: /bin/bash
 
-    - name: Apply Kubernetes deployment
+    - name: Apply Kubernetes resources
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', 'kubernetes/deployment.yaml') | from_yaml }}"
-
-    - name: Apply Kubernetes service
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ lookup('file', 'kubernetes/service.yaml') | from_yaml }}"
+        definition: "{{ lookup('template', 'kubernetes/{{ item }}.j2') | from_yaml }}"
+      loop:
+        - deployment
+        - service
+      vars:
+        image_name: "{{ image_name }}"
