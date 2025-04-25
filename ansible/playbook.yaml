@@ -8,10 +8,10 @@
       register: minikube_status
       failed_when: false
       changed_when: false
-    
+      
     - name: Start Minikube
       shell: minikube start
-      when: minikube_status.rc != 0
+      when: "'Running' not in minikube_status.stdout"
 
     - name: Enable registry addon
       shell: minikube addons enable registry

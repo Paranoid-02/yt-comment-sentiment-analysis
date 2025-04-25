@@ -202,6 +202,11 @@ pipeline {
 
                             # Activate the virtual environment
                             ../venv/bin/activate
+
+                            # Print PATH and environment
+                            echo "PATH: $PATH"
+                            which minikube
+                            env
                             
                             # Run the playbook
                             ansible-playbook -i inventory.ini playbook.yaml \
