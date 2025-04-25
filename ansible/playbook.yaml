@@ -1,13 +1,30 @@
 ---
-- name: Deploy Flask App to Kubernetes
-  hosts: kubernetes_nodes
-  become: yes
-  gather_facts: yes
-  roles:
-    - role: deploy-flask
-      vars:
-        app_name: "yt-comment-analysis"
-        image_name: "paranoid02/yt-comment-sentiment-analysis:latest"
-        replicas: 3
-        service_port: 80
-        target_port: 5000
+- hosts: local
+  become: true
+  vars:
+    image_name: "{{ image_name }}"
+  tasks:
+    - name: Check if Minikube is running
+      command: minikube status
+      register: minikube_status
+      failed_when: false
+      changed_when: false
+    
+    - name: Start Minikube
+      shell: minikube start
+      when: minikube_status.rc != 0
+
+    - name: Enable registry addon
+      shell: minikube addons enable registry
+
+    - name: Set docker env to minikube
+      shell: eval $(minikube -p minikube docker-env)
+      
+    - name: Apply Kubernetes deployment
+      kubernetes.core.k8s:        
+        state: present
+        src: kubernetes/deployment.yaml
+    - name: Apply Kubernetes service
+      kubernetes.core.k8s:
+        state: present
+        src: kubernetes/service.yaml

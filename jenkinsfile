@@ -186,21 +186,7 @@ pipeline {
             }
         }
 
-        // stage('Deploy to Kubernetes') {
-        //     steps {
-        //         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-        //             sh '''
-        //                 kubectl apply -f kubernetes/deployment.yaml
-        //                 kubectl apply -f kubernetes/service.yaml
-                        
-        //                 # Verify deployment
-        //                 kubectl rollout status deployment/yt-comment-analysis
-        //             '''
-        //         }
-        //     }
-        // }
-
-        stage('Deploy with Ansible') {
+        stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([sshUserPrivateKey(
                     credentialsId: 'ansible-ssh-key',
@@ -217,6 +203,7 @@ pipeline {
                                 --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
                             
                             # Verify deployment
+                            kubectl get deployments -l app=yt-comment-analysis
                             kubectl get pods -l app=yt-comment-analysis
                         '''
                     }

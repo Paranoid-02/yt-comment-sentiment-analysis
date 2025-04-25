@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yt-comment-analysis
+  name: yt-comment-deployment
+  labels:
+    app: yt-comment-analysis
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: yt-comment-analysis
   template:
     metadata:
       labels:
-        app: yt-comment-analysis
+          app: yt-comment-analysis
     spec:
       containers:
-      - name: app
-        image: paranoid02/yt-comment-sentiment-analysis:latest
-        ports:
-        - containerPort: 5000
-        envFrom:
-        - secretRef:
-            name: app-secrets
+        - name: yt-comment-container
+          image: "{{ image_name }}" # This will be replaced by the image name from Jenkins
+          ports:
+            - containerPort: 5000
+          imagePullPolicy: Always
