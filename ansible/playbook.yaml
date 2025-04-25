@@ -10,8 +10,8 @@
       ignore_errors: yes
       changed_when: false
 
-    - name: Start Minikube with none driver (if not running)
-      command: minikube start --driver=none
+    - name: Start Minikube (if not running)
+      command: minikube start
       when: "'Running' not in minikube_status.stdout"
       async: 300  # Max time to wait (5 minutes)
       poll: 10    # Check every 10 seconds
