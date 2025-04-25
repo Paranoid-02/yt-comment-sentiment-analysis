@@ -189,7 +189,7 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([sshUserPrivateKey(
-                    credentialsId: 'ansible-ssh-key',
+                    credentialsId: 'jenkins-ssh-key',
                     keyFileVariable: 'SSH_KEY'
                 )]) {
                     dir('ansible') {
