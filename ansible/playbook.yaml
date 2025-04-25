@@ -53,12 +53,12 @@
       args:
         executable: /bin/bash
 
-    - name: Apply Kubernetes resources
+    - name: Apply Kubernetes deployment
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('template', 'kubernetes/{{ item }}.j2') | from_yaml }}"
-      loop:
-        - deployment
-        - service
-      vars:
-        image_name: "{{ image_name }}"
+        definition: "{{ lookup('file', 'kubernetes/deployment.yaml') | from_yaml }}"
+
+    - name: Apply Kubernetes service
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', 'kubernetes/service.yaml') | from_yaml }}"
