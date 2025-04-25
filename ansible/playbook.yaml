@@ -56,8 +56,8 @@
     - name: Apply manifests using kubectl
       command: "kubectl apply -f ../kubernetes/{{ item }}.yaml"
       loop:
-        - deployment.yaml
-        - service.yaml
+        - deployment
+        - service
       register: apply_result
       retries: 3
       delay: 5
