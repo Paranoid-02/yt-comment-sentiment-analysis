@@ -3,18 +3,27 @@
   connection: local
   vars:
     image_name: "{{ image_name }}"
+    minikube_driver: "docker"
   tasks:
     - name: Check if Minikube is running
-      command: minikube status --driver=docker
+      command: minikube status
       register: minikube_status
       ignore_errors: yes
       changed_when: false
 
-    - name: Start Minikube (if not running)
-      command: minikube start
+    - name: Delete existing Minikube cluster if driver mismatch
+      command: minikube delete
+      when: 
+        - "'Running' not in minikube_status.stdout"
+        - "'docker' not in minikube_status.stdout"  # Adjust based on your actual driver
+      async: 60
+      poll: 5
+
+    - name: Start Minikube with correct driver
+      command: minikube start --driver={{ minikube_driver }}
       when: "'Running' not in minikube_status.stdout"
-      async: 300  # Max time to wait (5 minutes)
-      poll: 10    # Check every 10 seconds
+      async: 300
+      poll: 10
       register: minikube_start
       until: minikube_start.finished
       retries: 3
@@ -42,14 +51,8 @@
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('file', 'kubernetes/deployment.yaml') | from_yaml }}"
-      register: deployment_result
 
     - name: Apply Kubernetes service
       kubernetes.core.k8s:
         state: present
         definition: "{{ lookup('file', 'kubernetes/service.yaml') | from_yaml }}"
-      register: service_result
-
-    - name: Verify deployment
-      command: kubectl rollout status deployment/your-deployment-name
-      when: deployment_result.changed
