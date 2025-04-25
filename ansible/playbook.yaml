@@ -3,7 +3,7 @@
   connection: local
   vars:
     image_name: "{{ image_name }}"
-    minikube_driver: "docker"  # Match your existing driver
+    minikube_driver: "docker"
   tasks:
     - name: Check Minikube status
       command: minikube status -o json

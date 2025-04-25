@@ -15,8 +15,19 @@ spec:
           app: yt-comment-analysis
     spec:
       containers:
-        - name: yt-comment-container
-          image: "{{ image_name }}" # This will be replaced by the image name from Jenkins
-          ports:
-            - containerPort: 5000
-          imagePullPolicy: Always
+      - name: app
+        image: {{image_name}}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 5000
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: aws-access-key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: aws-secret

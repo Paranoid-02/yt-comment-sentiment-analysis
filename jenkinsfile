@@ -181,6 +181,8 @@ pipeline {
                         docker login -u $DOCKER_USER -p $DOCKER_PASS
                         docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:latest .
                         docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest   
+
+                        minikube image load $DOCKER_USER/yt-comment-sentiment-analysis:latest
                     '''
                 }
             }
@@ -211,7 +213,7 @@ pipeline {
                             # Run the playbook
                             ansible-playbook -i inventory.ini playbook.yaml \
                                 --private-key=$SSH_KEY \
-                                --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
+                                --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
                             
                             # Verify deployment
                             kubectl get deployments -l app=yt-comment-analysis
