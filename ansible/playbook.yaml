@@ -1,29 +1,55 @@
 ---
-- hosts: local
+- hosts: localhost
+  connection: local
   vars:
     image_name: "{{ image_name }}"
   tasks:
     - name: Check if Minikube is running
       command: minikube status
       register: minikube_status
-      failed_when: false
+      ignore_errors: yes
       changed_when: false
-    
-    - name: Start Minikube with none driver
-      shell: minikube start --driver=none
+
+    - name: Start Minikube with none driver (if not running)
+      command: minikube start --driver=none
       when: "'Running' not in minikube_status.stdout"
+      async: 300  # Max time to wait (5 minutes)
+      poll: 10    # Check every 10 seconds
+      register: minikube_start
+      until: minikube_start.finished
+      retries: 3
+
+    - name: Verify Minikube is ready
+      command: minikube status
+      register: minikube_ready
+      until: "'Running' in minikube_ready.stdout"
+      retries: 10
+      delay: 10
 
     - name: Enable registry addon
-      shell: minikube addons enable registry
+      command: minikube addons enable registry
+      register: addon_result
+      changed_when: "'was successfully enabled' in addon_result.stdout"
 
     - name: Set docker env to minikube
-      shell: eval $(minikube -p minikube docker-env)
-      
+      shell: |
+        eval $(minikube -p minikube docker-env)
+        docker info
+      args:
+        executable: /bin/bash
+
     - name: Apply Kubernetes deployment
-      kubernetes.core.k8s:        
+      kubernetes.core.k8s:
         state: present
-        src: kubernetes/deployment.yaml
+        definition: "{{ lookup('file', 'kubernetes/deployment.yaml') | from_yaml }}"
+      register: deployment_result
+
     - name: Apply Kubernetes service
       kubernetes.core.k8s:
         state: present
-        src: kubernetes/service.yaml
+        definition: "{{ lookup('file', 'kubernetes/service.yaml') | from_yaml }}"
+      register: service_result
+
+    - name: Verify deployment
+      command: kubectl rollout status deployment/your-deployment-name
+      when: deployment_result.changed
