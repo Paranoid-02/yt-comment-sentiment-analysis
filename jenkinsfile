@@ -197,7 +197,7 @@ pipeline {
                             # Install Ansible if needed
                             pip install ansible==8.6.1
                             # Activate the virtual environment
-                            source ../venv/bin/activate
+                            ../venv/bin/activate
                             
                             # Run the playbook
                             ansible-playbook -i inventory.ini playbook.yaml \
