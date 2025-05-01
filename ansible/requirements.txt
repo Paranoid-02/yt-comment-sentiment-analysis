@@ -1,0 +1,4 @@
+kubernetes>=29.0.0
+openshift>=0.13.1
+ansible>=8.6.1
+kubernetes.core>=2.4.0

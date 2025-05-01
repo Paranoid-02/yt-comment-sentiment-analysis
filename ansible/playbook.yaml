@@ -3,73 +3,117 @@
   connection: local
   vars:
     image_name: "{{ image_name }}"
-    minikube_driver: "docker"
+  
   tasks:
-    - name: Check Minikube status
-      command: minikube status -o json
-      register: minikube_status
-      ignore_errors: yes
+    - name: Verify kubectl access
+      command: kubectl auth can-i create deployments
+      register: k8s_auth
       changed_when: false
-
-    - name: Parse Minikube status
-      set_fact:
-        minikube_healthy: "{{ (minikube_status.stdout | from_json).Host == 'Running' 
-                              and (minikube_status.stdout | from_json).Kubelet == 'Running'
-                              and (minikube_status.stdout | from_json).APIServer == 'Running' }}"
-      when: minikube_status.stdout != ""
-
-    - name: Delete and recreate cluster if unhealthy
-      block:
-        - name: Delete existing cluster
-          command: minikube delete
-          async: 60
-          poll: 5
-
-        - name: Start Minikube
-          command: minikube start --driver={{ minikube_driver }}
-          async: 300
-          poll: 10
-          register: minikube_start
-          until: minikube_start.finished
-          retries: 3
-      when: not minikube_healthy|default(False)
-
-    - name: Verify full cluster health
-      command: minikube status -o json
-      register: health_check
-      until: "(health_check.stdout | from_json).APIServer == 'Running'"
-      retries: 10
-      delay: 10
-
-    - name: Enable registry addon
-      command: minikube addons enable registry
-      register: addon_result
-      changed_when: "'was successfully enabled' in addon_result.stdout"
-
-    - name: Configure Docker environment
-      shell: |
-        eval $(minikube -p minikube docker-env)
-        docker ps
-      args:
-        executable: /bin/bash
+      ignore_errors: yes
 
     - name: Process deployment template
       template:
         src: ../kubernetes/deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
+      register: template_result
+
+    - name: Validate processed YAML
+      command: kubectl apply --dry-run=client -f ../kubernetes/deployment-processed.yaml
+      register: validate
+      changed_when: false
 
     - name: Apply Kubernetes manifests
       kubernetes.core.k8s:
+        kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config', true) }}"
         state: present
-        definition: "{{ lookup('file', '../kubernetes/' + item) | from_yaml }}"
+        definition: "{{ lookup('file', '../kubernetes/' + item) }}"
       loop:
         - "deployment-processed.yaml"
         - "service.yaml"
+      when: "'valid' in validate.stdout"
       register: apply_result
       retries: 3
       delay: 10
-      until: apply_result is succeeded
 
     - name: Verify deployment
       command: kubectl rollout status deployment/yt-comment-deployment --timeout=120s
-      when: "'deployment' in apply_result.results[0].result.method"
+      when: apply_result is changed
+
+
+
+
+# ---
+# - hosts: localhost
+#   connection: local
+#   vars:
+#     image_name: "{{ image_name }}"
+#     minikube_driver: "docker"
+#   tasks:
+#     - name: Check Minikube status
+#       command: minikube status -o json
+#       register: minikube_status
+#       ignore_errors: yes
+#       changed_when: false
+
+#     - name: Parse Minikube status
+#       set_fact:
+#         minikube_healthy: "{{ (minikube_status.stdout | from_json).Host == 'Running' 
+#                               and (minikube_status.stdout | from_json).Kubelet == 'Running'
+#                               and (minikube_status.stdout | from_json).APIServer == 'Running' }}"
+#       when: minikube_status.stdout != ""
+
+#     - name: Delete and recreate cluster if unhealthy
+#       block:
+#         - name: Delete existing cluster
+#           command: minikube delete
+#           async: 60
+#           poll: 5
+
+#         - name: Start Minikube
+#           command: minikube start --driver={{ minikube_driver }}
+#           async: 300
+#           poll: 10
+#           register: minikube_start
+#           until: minikube_start.finished
+#           retries: 3
+#       when: not minikube_healthy|default(False)
+
+#     - name: Verify full cluster health
+#       command: minikube status -o json
+#       register: health_check
+#       until: "(health_check.stdout | from_json).APIServer == 'Running'"
+#       retries: 10
+#       delay: 10
+
+#     - name: Enable registry addon
+#       command: minikube addons enable registry
+#       register: addon_result
+#       changed_when: "'was successfully enabled' in addon_result.stdout"
+
+#     - name: Configure Docker environment
+#       shell: |
+#         eval $(minikube -p minikube docker-env)
+#         docker ps
+#       args:
+#         executable: /bin/bash
+
+#     - name: Process deployment template
+#       template:
+#         src: ../kubernetes/deployment.yaml.j2
+#         dest: ../kubernetes/deployment-processed.yaml
+
+#     - name: Apply Kubernetes manifests
+#       kubernetes.core.k8s:
+#         state: present
+#         definition: "{{ lookup('file', '../kubernetes/' + item) | from_yaml }}"
+#       loop:
+#         - "deployment-processed.yaml"
+#         - "service.yaml"
+#       register: apply_result
+#       retries: 3
+#       delay: 10
+#       until: apply_result is succeeded
+
+#     - name: Verify deployment
+#       command: kubectl rollout status deployment/yt-comment-deployment --timeout=120s
+#       when: "'deployment' in apply_result.results[0].result.method"

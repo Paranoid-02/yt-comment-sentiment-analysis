@@ -186,47 +186,88 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes Via Ansible') {
+        // stage('Deploy to Kubernetes Via Ansible') {
+        //     steps {
+        //         withCredentials([
+        //             sshUserPrivateKey(
+        //                 credentialsId: 'jenkins-ssh-key',
+        //                 keyFileVariable: 'SSH_KEY'
+        //             ),
+        //             usernamePassword(
+        //                 credentialsId: 'DockerHubCred',
+        //                 usernameVariable: 'DOCKER_USER',
+        //                 passwordVariable: 'DOCKER_PASS'
+        //             )
+        //         ]) {
+        //             dir('ansible') {
+        //                 sh '''
+        //                     # Install required packages
+        //                     pip install ansible==8.6.1 kubernetes==29.0.0 openshift==0.13.1
+
+        //                     # Make the activate script executable
+        //                     chmod +x ../venv/bin/activate
+
+        //                     # Activate the virtual environment
+        //                     ../venv/bin/activate
+
+        //                     # Print PATH and environment
+        //                     echo "PATH: $PATH"
+        //                     which minikube
+        //                     env
+                            
+        //                     # Set image name with build number
+        //                     export FULL_IMAGE_NAME="${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
+
+        //                     # Run Ansible with proper image name
+        //                     ansible-playbook -i inventory.ini playbook.yaml \
+        //                         --private-key=$SSH_KEY \
+        //                         --extra-vars "image_name=${FULL_IMAGE_NAME}" \
+        //                         -vvv
+                            
+        //                     # Verify deployment
+        //                     kubectl get deployments -l app=yt-comment-analysis
+        //                     kubectl get pods -l app=yt-comment-analysis
+        //                 '''
+        //             }
+        //         }
+        //     }
+        // }
+
+        stage('Deploy to Kubernetes') {
             steps {
                 withCredentials([
                     sshUserPrivateKey(
-                        credentialsId: 'jenkins-ssh-key',
+                        credentialsId: 'jenkins-ssh-key', 
                         keyFileVariable: 'SSH_KEY'
                     ),
-                    usernamePassword(
-                        credentialsId: 'DockerHubCred',
-                        usernameVariable: 'DOCKER_USER',
-                        passwordVariable: 'DOCKER_PASS'
+                    file(
+                        credentialsId: 'kubeconfig', 
+                        variable: 'KUBECONFIG'
                     )
                 ]) {
                     dir('ansible') {
                         sh '''
-                            # Install required packages
-                            pip install ansible==8.6.1 kubernetes==29.0.0 openshift==0.13.1
-
-                            # Make the activate script executable
-                            chmod +x ../venv/bin/activate
-
-                            # Activate the virtual environment
-                            ../venv/bin/activate
-
-                            # Print PATH and environment
-                            echo "PATH: $PATH"
-                            which minikube
-                            env
-                            
-                            # Set image name with build number
+                            # Set up environment
+                            export KUBECONFIG=${KUBECONFIG}
                             export FULL_IMAGE_NAME="${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
 
-                            # Run Ansible with proper image name
+                            # Install requirements
+                            pip install -r requirements.txt
+
+                            # Run playbook with verbose output
                             ansible-playbook -i inventory.ini playbook.yaml \
                                 --private-key=$SSH_KEY \
                                 --extra-vars "image_name=${FULL_IMAGE_NAME}" \
                                 -vvv
-                            
+
+                            # Debug output
+                            echo "=== Processed Deployment YAML ==="
+                            cat ../kubernetes/deployment-processed.yaml
+                            echo "================================"
+
                             # Verify deployment
-                            kubectl get deployments -l app=yt-comment-analysis
-                            kubectl get pods -l app=yt-comment-analysis
+                            kubectl get deployments -o wide
+                            kubectl get pods -o wide
                         '''
                     }
                 }
