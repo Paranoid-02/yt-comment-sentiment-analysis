@@ -4,10 +4,11 @@
   vars:
     image_name: "{{ image_name }}"
     minikube_driver: "docker"
+    k8s_namespace: "default"
   tasks:
     - name: Debug variables
       debug:
-        msg: "Using image: {{ image_name }}"
+        msg: "Using image: {{ image_name }} in namespace: {{ k8s_namespace }}"
       
     - name: Check Minikube status
       command: minikube status -o json
@@ -58,6 +59,29 @@
       args:
         executable: /bin/bash
 
+    # Ensure namespace exists
+    - name: Ensure namespace exists
+      kubernetes.core.k8s:
+        name: "{{ k8s_namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    # Create the AWS credentials secret
+    - name: Create AWS credentials secret
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: app-secrets
+            namespace: "{{ k8s_namespace }}"
+          type: Opaque
+          stringData:
+            aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+            aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+
     - name: Check for template file
       stat:
         path: ../kubernetes/deployment.yaml.j2
@@ -79,18 +103,27 @@
         dest: ../kubernetes/deployment-processed.yaml
       when: not template_file.stat.exists
 
-    - name: Apply Kubernetes manifests
+    # Apply deployments with explicit namespace
+    - name: Apply Kubernetes deployment
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('file', '../kubernetes/' + item) | from_yaml }}"
-      loop:
-        - "deployment-processed.yaml"
-        - "service.yaml"
-      register: apply_result
+        namespace: "{{ k8s_namespace }}"
+        src: "../kubernetes/deployment-processed.yaml"
+      register: deploy_result
       retries: 3
       delay: 10
-      until: apply_result is succeeded
+      until: deploy_result is succeeded
+
+    # Apply service with explicit namespace
+    - name: Apply Kubernetes service
+      kubernetes.core.k8s:
+        state: present
+        namespace: "{{ k8s_namespace }}"
+        src: "../kubernetes/service.yaml"
+      register: service_result
+      retries: 3
+      delay: 10
+      until: service_result is succeeded
 
     - name: Verify deployment
-      command: kubectl rollout status deployment/yt-comment-deployment --timeout=120s
-      when: "'deployment' in apply_result.results[0].result.method"
+      command: kubectl rollout status deployment/yt-comment-deployment -n {{ k8s_namespace }} --timeout=120s

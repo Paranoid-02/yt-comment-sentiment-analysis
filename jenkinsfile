@@ -197,6 +197,14 @@ pipeline {
                         credentialsId: 'DockerHubCred',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
+                    ),
+                    string(
+                        credentialsId: 'aws-access-key-id', 
+                        variable: 'AWS_ACCESS_KEY_ID'
+                    ),
+                    string(
+                        credentialsId: 'aws-secret-access-key', 
+                        variable: 'AWS_SECRET_ACCESS_KEY'
                     )
                 ]) {
                     dir('ansible') {
@@ -212,13 +220,75 @@ pipeline {
                             which minikube
                             which ansible-playbook
                             
+                            # Make sure required YAML files exist
+                            if [ ! -f "../kubernetes/service.yaml" ]; then
+                                echo "Creating service.yaml..."
+                                mkdir -p ../kubernetes
+                                cat > ../kubernetes/service.yaml << 'EOL'
+        apiVersion: v1
+        kind: Service
+        metadata:
+        name: yt-comment-service
+        namespace: default
+        spec:
+        selector:
+            app: yt-comment-analysis
+        ports:
+            - protocol: TCP
+            port: 80
+            targetPort: 5000
+        type: LoadBalancer
+        EOL
+                            fi
+                            
+                            # Create template file if it doesn't exist
+                            if [ ! -f "deployment.yaml.j2" ]; then
+                                echo "Creating deployment.yaml.j2..."
+                                cat > deployment.yaml.j2 << 'EOL'
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+        name: yt-comment-deployment
+        namespace: default
+        labels:
+            app: yt-comment-analysis
+        spec:
+        replicas: 1
+        selector:
+            matchLabels:
+            app: yt-comment-analysis
+        template:
+            metadata:
+            labels:
+                app: yt-comment-analysis
+            spec:
+            containers:
+            - name: app
+                image: {{ image_name }}
+                imagePullPolicy: Always
+                ports:
+                - containerPort: 5000
+                env:
+                - name: AWS_ACCESS_KEY_ID
+                valueFrom:
+                    secretKeyRef:
+                    name: app-secrets
+                    key: aws-access-key
+                - name: AWS_SECRET_ACCESS_KEY
+                valueFrom:
+                    secretKeyRef:
+                    name: app-secrets
+                    key: aws-secret
+        EOL
+                            fi
+                            
                             # Run Ansible with proper image name
-                            ansible-playbook -i inventory.ini playbook.yaml \
+                            ANSIBLE_DEBUG=1 ansible-playbook -vvv -i inventory.ini playbook.yaml \
                                 --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
                             
                             # Verify deployment
-                            kubectl get deployments -l app=yt-comment-analysis
-                            kubectl get pods -l app=yt-comment-analysis
+                            kubectl get deployments -l app=yt-comment-analysis -n default
+                            kubectl get pods -l app=yt-comment-analysis -n default
                         '''
                     }
                 }
