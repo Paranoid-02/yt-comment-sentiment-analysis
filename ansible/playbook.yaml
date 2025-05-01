@@ -3,7 +3,6 @@
   connection: local
   vars:
     image_name: "{{ image_name }}"
-    minikube_driver: "docker"
     k8s_namespace: "default"
   tasks:
     - name: Debug variables
@@ -15,49 +14,6 @@
       register: minikube_status
       ignore_errors: yes
       changed_when: false
-
-    - name: Parse Minikube status
-      set_fact:
-        minikube_healthy: "{{ (minikube_status.stdout | from_json).Host == 'Running' 
-                              and (minikube_status.stdout | from_json).Kubelet == 'Running'
-                              and (minikube_status.stdout | from_json).APIServer == 'Running' }}"
-      when: minikube_status.stdout != ""
-      ignore_errors: yes
-
-    - name: Delete and recreate cluster if unhealthy
-      block:
-        - name: Delete existing cluster
-          command: minikube delete
-          async: 60
-          poll: 5
-
-        - name: Start Minikube
-          command: minikube start --driver={{ minikube_driver }}
-          async: 300
-          poll: 10
-          register: minikube_start
-          until: minikube_start.finished
-          retries: 3
-      when: not minikube_healthy|default(False)
-
-    - name: Verify full cluster health
-      command: minikube status -o json
-      register: health_check
-      until: "(health_check.stdout | from_json).APIServer == 'Running'"
-      retries: 10
-      delay: 10
-
-    - name: Enable registry addon
-      command: minikube addons enable registry
-      register: addon_result
-      changed_when: "'was successfully enabled' in addon_result.stdout"
-
-    - name: Configure Docker environment
-      shell: |
-        eval $(minikube -p minikube docker-env)
-        docker ps
-      args:
-        executable: /bin/bash
 
     # Ensure namespace exists
     - name: Ensure namespace exists
@@ -82,26 +38,10 @@
             aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
             aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
 
-    - name: Check for template file
-      stat:
-        path: ../kubernetes/deployment.yaml.j2
-      register: template_file
-      
-    - name: Debug template path
-      debug:
-        msg: "Template file exists: {{ template_file.stat.exists }}"
-
     - name: Process deployment template
-      template:
-        src: ../kubernetes/deployment.yaml.j2
-        dest: ../kubernetes/deployment-processed.yaml
-      when: template_file.stat.exists
-
-    - name: Create processed deployment file from local template
       template:
         src: deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
-      when: not template_file.stat.exists
 
     # Apply deployments with explicit namespace
     - name: Apply Kubernetes deployment
@@ -110,9 +50,6 @@
         namespace: "{{ k8s_namespace }}"
         src: "../kubernetes/deployment-processed.yaml"
       register: deploy_result
-      retries: 3
-      delay: 10
-      until: deploy_result is succeeded
 
     # Apply service with explicit namespace
     - name: Apply Kubernetes service
@@ -121,9 +58,6 @@
         namespace: "{{ k8s_namespace }}"
         src: "../kubernetes/service.yaml"
       register: service_result
-      retries: 3
-      delay: 10
-      until: service_result is succeeded
 
     - name: Verify deployment
       command: kubectl rollout status deployment/yt-comment-deployment -n {{ k8s_namespace }} --timeout=120s
