@@ -22,7 +22,7 @@
       
     - name: Create processed deployment file
       template:
-        src: ..kubernetes/deployment.yaml.j2
+        src: templates/deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
       
     - name: Create AWS credentials secret
