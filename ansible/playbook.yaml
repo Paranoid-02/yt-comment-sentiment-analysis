@@ -1,63 +1,48 @@
 ---
 - hosts: localhost
   connection: local
-  vars:
-    image_name: "{{ image_name }}"
-    k8s_namespace: "default"
   tasks:
-    - name: Debug variables
-      debug:
-        msg: "Using image: {{ image_name }} in namespace: {{ k8s_namespace }}"
-      
     - name: Check Minikube status
       command: minikube status -o json
       register: minikube_status
       ignore_errors: yes
       changed_when: false
 
-    # Ensure namespace exists
+    - name: Parse Minikube status
+      set_fact:
+        minikube_healthy: "{{ (minikube_status.stdout | from_json).Host == 'Running' 
+                              and (minikube_status.stdout | from_json).Kubelet == 'Running'
+                              and (minikube_status.stdout | from_json).APIServer == 'Running' }}"
+      when: minikube_status.stdout != ""
+      ignore_errors: yes
+
+    - name: Start Minikube if not running
+      command: minikube start --driver=docker
+      when: not minikube_healthy|default(False)
+
     - name: Ensure namespace exists
-      kubernetes.core.k8s:
-        name: "{{ k8s_namespace }}"
-        api_version: v1
-        kind: Namespace
-        state: present
+      command: kubectl create namespace default --dry-run=client -o yaml | kubectl apply -f -
+      changed_when: false
 
     # Create the AWS credentials secret
     - name: Create AWS credentials secret
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: app-secrets
-            namespace: "{{ k8s_namespace }}"
-          type: Opaque
-          stringData:
-            aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
-            aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+      command: >
+        kubectl create secret generic app-secrets 
+        --namespace=default
+        --from-literal=aws-access-key="{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}"
+        --from-literal=aws-secret="{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}"
+        --dry-run=client -o yaml | kubectl apply -f -
+      changed_when: false
 
-    - name: Process deployment template
-      template:
-        src: deployment.yaml.j2
-        dest: ../kubernetes/deployment-processed.yaml
-
-    # Apply deployments with explicit namespace
-    - name: Apply Kubernetes deployment
-      kubernetes.core.k8s:
-        state: present
-        namespace: "{{ k8s_namespace }}"
-        src: "../kubernetes/deployment-processed.yaml"
+    # Apply the deployment using kubectl
+    - name: Apply deployment
+      command: kubectl apply -f ../kubernetes/deployment.yaml
       register: deploy_result
 
-    # Apply service with explicit namespace
-    - name: Apply Kubernetes service
-      kubernetes.core.k8s:
-        state: present
-        namespace: "{{ k8s_namespace }}"
-        src: "../kubernetes/service.yaml"
+    # Apply the service using kubectl
+    - name: Apply service
+      command: kubectl apply -f ../kubernetes/service.yaml
       register: service_result
 
     - name: Verify deployment
-      command: kubectl rollout status deployment/yt-comment-deployment -n {{ k8s_namespace }} --timeout=120s
+      command: kubectl rollout status deployment/yt-comment-deployment -n default --timeout=120s
