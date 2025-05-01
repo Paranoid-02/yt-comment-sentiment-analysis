@@ -215,10 +215,14 @@ pipeline {
                             which minikube
                             env
                             
-                            # Run the playbook
+                            # Set image name with build number
+                            export FULL_IMAGE_NAME="${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
+
+                            # Run Ansible with proper image name
                             ansible-playbook -i inventory.ini playbook.yaml \
                                 --private-key=$SSH_KEY \
-                                --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
+                                --extra-vars "image_name=${FULL_IMAGE_NAME}" \
+                                -vvv
                             
                             # Verify deployment
                             kubectl get deployments -l app=yt-comment-analysis

@@ -53,12 +53,23 @@
       args:
         executable: /bin/bash
 
-    - name: Apply manifests using kubectl
-      command: "kubectl apply -f ../kubernetes/{{ item }}.yaml"
+    - name: Process deployment template
+      template:
+        src: ../kubernetes/deployment.yaml.j2
+        dest: ../kubernetes/deployment-processed.yaml
+
+    - name: Apply Kubernetes manifests
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('file', '../kubernetes/' + item) | from_yaml }}"
       loop:
-        - deployment
-        - service
+        - "deployment-processed.yaml"
+        - "service.yaml"
       register: apply_result
       retries: 3
-      delay: 5
-      until: apply_result.rc == 0
+      delay: 10
+      until: apply_result is succeeded
+
+    - name: Verify deployment
+      command: kubectl rollout status deployment/yt-comment-deployment --timeout=120s
+      when: "'deployment' in apply_result.results[0].result.method"
