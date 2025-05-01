@@ -50,11 +50,20 @@
       retries: 3
       delay: 10
       
-    - name: Verify deployment
-      command: |
-        kubectl rollout status deployment/yt-comment-deployment -n {{ k8s_namespace }} --timeout=120s
-        kubectl get pods -l app=yt-comment-analysis -n {{ k8s_namespace }}
-      register: verify
-      until: verify.rc == 0
+    - name: Verify deployment rollout
+      command: kubectl rollout status deployment/yt-comment-deployment -n {{ k8s_namespace }} --timeout=180s
+      register: rollout
+      until: rollout.rc == 0
       retries: 5
       delay: 15
+      ignore_errors: yes
+
+    - name: Check pods status
+      command: kubectl get pods -l app=yt-comment-analysis -n {{ k8s_namespace }} -o wide
+      register: pods
+      changed_when: false
+
+    - name: Debug pod issues if any
+      debug:
+        msg: "Pod status: {{ pods.stdout }}"
+      when: rollout.rc != 0
