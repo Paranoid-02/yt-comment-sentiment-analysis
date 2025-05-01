@@ -201,8 +201,8 @@ pipeline {
                 ]) {
                     dir('ansible') {
                         sh '''
-                            # Install Ansible if needed
-                            pip install ansible==8.6.1
+                            # Install required packages
+                            pip install ansible==8.6.1 kubernetes==29.0.0 openshift==0.13.1
 
                             # Make the activate script executable
                             chmod +x ../venv/bin/activate
