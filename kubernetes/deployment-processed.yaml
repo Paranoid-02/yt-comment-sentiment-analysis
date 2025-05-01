@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yt-comment-deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        image: paranoid02/yt-comment-sentiment-analysis:146
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5000
