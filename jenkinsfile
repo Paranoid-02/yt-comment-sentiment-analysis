@@ -178,20 +178,35 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
+                        # Set up Minikube's Docker environment
+                        eval $(minikube docker-env)
+                        
+                        # Build and tag with both latest and build number
+                        docker build -t ${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER} .
+                        docker tag ${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER} ${DOCKER_USER}/yt-comment-sentiment-analysis:latest
+                        
+                        # Push to registry
                         docker login -u $DOCKER_USER -p $DOCKER_PASS
-                        docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:latest .
-                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest   
+                        docker push ${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}
+                        docker push ${DOCKER_USER}/yt-comment-sentiment-analysis:latest
                     '''
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy to Kubernetes Via Ansible') {
             steps {
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'jenkins-ssh-key',
-                    keyFileVariable: 'SSH_KEY'
-                )]) {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'jenkins-ssh-key',
+                        keyFileVariable: 'SSH_KEY'
+                    ),
+                    usernamePassword(
+                        credentialsId: 'DockerHubCred',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
                     dir('ansible') {
                         sh '''
                             # Install Ansible if needed
