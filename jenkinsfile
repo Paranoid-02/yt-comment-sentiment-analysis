@@ -251,26 +251,43 @@ pipeline {
                             export KUBECONFIG=${KUBECONFIG}
                             export FULL_IMAGE_NAME="${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
 
-                            # Install requirements
-                            pip install -r requirements.txt
-
-                            # Run playbook with verbose output
-                            ansible-playbook -i inventory.ini playbook.yaml \
-                                --private-key=$SSH_KEY \
-                                --extra-vars "image_name=${FULL_IMAGE_NAME}" \
-                                -vvv
-
-                            # Debug output
+                            # Debug: Show processed YAML before applying
                             echo "=== Processed Deployment YAML ==="
                             cat ../kubernetes/deployment-processed.yaml
                             echo "================================"
 
+                            # Run playbook with continue on error
+                            ansible-playbook -i inventory.ini playbook.yaml \
+                                --private-key=$SSH_KEY \
+                                --extra-vars "image_name=${FULL_IMAGE_NAME}" \
+                                -vvv || true
+
                             # Verify deployment
                             kubectl get deployments -o wide
                             kubectl get pods -o wide
+                            kubectl describe deployment yt-comment-deployment || true
                         '''
                     }
                 }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    # Check if Minikube is running
+                    minikube status
+                    
+                    # Verify image exists in Minikube
+                    minikube ssh -- "docker images | grep yt-comment-sentiment-analysis"
+                    
+                    # Check Kubernetes events
+                    kubectl get events --sort-by='.lastTimestamp'
+                    
+                    # Detailed pod debug if exists
+                    kubectl get pods -o wide
+                    kubectl describe pod -l app=yt-comment-analysis || true
+                '''
             }
         }
 

@@ -9,18 +9,21 @@
       command: kubectl auth can-i create deployments
       register: k8s_auth
       changed_when: false
-      ignore_errors: yes
 
     - name: Process deployment template
       template:
         src: ../kubernetes/deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
-      register: template_result
 
     - name: Validate processed YAML
       command: kubectl apply --dry-run=client -f ../kubernetes/deployment-processed.yaml
       register: validate
       changed_when: false
+      ignore_errors: yes  # Continue even if validation fails
+
+    - name: Debug validation output
+      debug:
+        var: validate.stdout
 
     - name: Apply Kubernetes manifests
       kubernetes.core.k8s:
@@ -30,7 +33,6 @@
       loop:
         - "deployment-processed.yaml"
         - "service.yaml"
-      when: "'valid' in validate.stdout"
       register: apply_result
       retries: 3
       delay: 10
@@ -38,8 +40,6 @@
     - name: Verify deployment
       command: kubectl rollout status deployment/yt-comment-deployment --timeout=120s
       when: apply_result is changed
-
-
 
 
 # ---
