@@ -4,12 +4,13 @@
   vars:
     image_name: "{{ image_name }}"
     k8s_namespace: "default"
+  
   tasks:
     - name: Debug variables
       debug:
         msg: "Using image: {{ image_name }} in namespace: {{ k8s_namespace }}"
       
-    - name: Check if minikube is running
+    - name: Check minikube status
       command: minikube status
       register: minikube_status
       ignore_errors: yes
@@ -25,20 +26,35 @@
         dest: ../kubernetes/deployment-processed.yaml
       
     - name: Create AWS credentials secret
-      shell: |
-        kubectl create namespace {{ k8s_namespace }} --dry-run=client -o yaml | kubectl apply -f -
-        kubectl create secret generic app-secrets \
-          --from-literal=aws-access-key="{{ lookup('env', 'AWS_ACCESS_KEY_ID') }}" \
-          --from-literal=aws-secret="{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') }}" \
-          --namespace={{ k8s_namespace }} \
-          --dry-run=client -o yaml | kubectl apply -f -
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: app-secrets
+            namespace: "{{ k8s_namespace }}"
+          data:
+            aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | b64encode }}"
+            aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | b64encode }}"
       
     - name: Apply Kubernetes resources
-      shell: |
-        kubectl apply -f ../kubernetes/deployment-processed.yaml -n {{ k8s_namespace }}
-        kubectl apply -f ../kubernetes/service.yaml -n {{ k8s_namespace }}
+      kubernetes.core.k8s:
+        state: present
+        src: "../kubernetes/{{ item }}"
+        namespace: "{{ k8s_namespace }}"
+      loop:
+        - deployment-processed.yaml
+        - service.yaml
+      register: apply_result
+      retries: 3
+      delay: 10
       
     - name: Verify deployment
-      shell: |
+      command: |
         kubectl rollout status deployment/yt-comment-deployment -n {{ k8s_namespace }} --timeout=120s
         kubectl get pods -l app=yt-comment-analysis -n {{ k8s_namespace }}
+      register: verify
+      until: verify.rc == 0
+      retries: 5
+      delay: 15
