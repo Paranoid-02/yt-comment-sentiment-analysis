@@ -5,6 +5,10 @@
     image_name: "{{ image_name }}"
     minikube_driver: "docker"
   tasks:
+    - name: Debug variables
+      debug:
+        msg: "Using image: {{ image_name }}"
+      
     - name: Check Minikube status
       command: minikube status -o json
       register: minikube_status
@@ -17,6 +21,7 @@
                               and (minikube_status.stdout | from_json).Kubelet == 'Running'
                               and (minikube_status.stdout | from_json).APIServer == 'Running' }}"
       when: minikube_status.stdout != ""
+      ignore_errors: yes
 
     - name: Delete and recreate cluster if unhealthy
       block:
@@ -53,10 +58,26 @@
       args:
         executable: /bin/bash
 
+    - name: Check for template file
+      stat:
+        path: ../kubernetes/deployment.yaml.j2
+      register: template_file
+      
+    - name: Debug template path
+      debug:
+        msg: "Template file exists: {{ template_file.stat.exists }}"
+
     - name: Process deployment template
       template:
         src: ../kubernetes/deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
+      when: template_file.stat.exists
+
+    - name: Create processed deployment file from local template
+      template:
+        src: deployment.yaml.j2
+        dest: ../kubernetes/deployment-processed.yaml
+      when: not template_file.stat.exists
 
     - name: Apply Kubernetes manifests
       kubernetes.core.k8s:

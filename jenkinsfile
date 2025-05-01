@@ -201,27 +201,20 @@ pipeline {
                 ]) {
                     dir('ansible') {
                         sh '''
-                            # Install required packages
+                            # Install required packages if needed
                             pip install ansible==8.6.1 kubernetes==29.0.0 openshift==0.13.1
 
-                            # Make the activate script executable
-                            chmod +x ../venv/bin/activate
-
                             # Activate the virtual environment
-                            ../venv/bin/activate
+                            . ../venv/bin/activate
 
-                            # Print PATH and environment
+                            # Print debug info
                             echo "PATH: $PATH"
                             which minikube
-                            env
+                            which ansible-playbook
                             
-                            # Set image name with build number
-                            export FULL_IMAGE_NAME="${DOCKER_USER}/yt-comment-sentiment-analysis:${BUILD_NUMBER}"
-
                             # Run Ansible with proper image name
                             ansible-playbook -i inventory.ini playbook.yaml \
-                                --private-key=$SSH_KEY \
-                                --extra-vars "image_name=${FULL_IMAGE_NAME}"
+                                --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
                             
                             # Verify deployment
                             kubectl get deployments -l app=yt-comment-analysis
