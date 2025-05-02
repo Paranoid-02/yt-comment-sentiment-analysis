@@ -181,9 +181,15 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
+                        # Clean the build context
+                        mkdir -p docker-build
+                        cp -r flask_app/ docker-build/
+                        cp requirements.txt docker-build/
+                        cp Dockerfile docker-build/
+
                         docker login -u $DOCKER_USER -p $DOCKER_PASS
                         docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:latest .
-                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest   
+                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest
                     '''
                 }
             }
