@@ -37,6 +37,8 @@
           data:
             aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | b64encode }}"
             aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | b64encode }}"
+        kubeconfig: "{{ lookup('env', 'KUBECONFIG') }}"
+        ca_cert: "minikube-ca.crt"
       
     - name: Apply Kubernetes resources
       kubernetes.core.k8s:

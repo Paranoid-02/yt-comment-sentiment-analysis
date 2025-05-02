@@ -215,6 +215,14 @@ pipeline {
                             which minikube
                             which ansible-playbook
                             
+                            # Get Minikube CA cert
+                            minikube ssh -- sudo cat /var/lib/minikube/certs/ca.crt > minikube-ca.crt
+                            
+                            # Configure kubectl
+                            kubectl config set-cluster minikube \
+                            --certificate-authority=minikube-ca.crt \
+                            --server=https://$(minikube ip):8443
+                            
                             # Run Ansible with proper image name
                             ansible-playbook -i inventory.ini playbook.yaml \
                                 --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
