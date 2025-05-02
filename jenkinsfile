@@ -6,6 +6,9 @@ pipeline {
         AWS_DEFAULT_REGION = 'eu-north-1'
         GITHUB_REPO_URL = 'https://github.com/Paranoid-02/yt-comment-sentiment-analysis.git'
         GIT_USERNAME = 'Paranoid-02'
+        NGROK_AUTH_TOKEN = credentials('ngrok-auth-token')
+        SERVICE_NAME = 'yt-comment-service'
+        NAMESPACE = 'default'
     }
     
     stages {
@@ -225,22 +228,121 @@ pipeline {
             }
         }
 
-        stage('Verify Deployment') {
+        // stage('Verify Deployment') {
+        //     steps {
+        //         script {
+        //             // 1. Basic Kubernetes verification
+        //             sh """
+        //                 kubectl rollout status deployment/yt-comment-deployment -n ${NAMESPACE} --timeout=180s
+        //                 kubectl get pods -l app=yt-comment-analysis -n ${NAMESPACE} -o wide
+        //             """
+                    
+        //             // 2. Ngrok testing
+        //             def SERVICE_PORT = sh(returnStdout: true, script: """
+        //                 kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
+        //                 -o jsonpath='{.spec.ports[0].nodePort}'
+        //             """).trim()
+                    
+        //             withEnv(["NGROK_PORT=${SERVICE_PORT}"]) {
+        //                 sh '''
+        //                     ./ngrok http ${NGROK_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
+        //                     sleep 5
+        //                     NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+        //                     echo "Testing endpoint: ${NGROK_URL}/predict"
+                            
+        //                     # Run test cases
+        //                     curl -X POST "${NGROK_URL}/predict" \
+        //                         -H "Content-Type: application/json" \
+        //                         -d '{"text":"Great content!"}'
+                            
+        //                     # Verify response format
+        //                     curl -s "${NGROK_URL}/healthcheck" | grep -q "Model Loaded"
+                            
+        //                     # Save URL for artifact
+        //                     echo "Public Test URL: ${NGROK_URL}" > ngrok_url.txt
+        //                 '''
+        //             }
+                    
+        //             // 3. Load test results
+        //             def NGROK_URL = readFile('ngrok_url.txt').trim()
+        //             currentBuild.description = "Public Test URL: ${NGROK_URL}"
+        //         }
+        //     }
+        //     post {
+        //         always {
+        //             sh 'pkill ngrok || true'
+        //             archiveArtifacts artifacts: 'ngrok.log,ngrok_url.txt', fingerprint: true
+        //         }
+        //     }
+        // }
+
+        stage('Verify with Ngrok') {
             steps {
-                sh '''
-                    # Check if Minikube is running
-                    minikube status
+                script {
+                    // Get the cluster IP and port
+                    def SERVICE_PORT = sh(returnStdout: true, script: """
+                        kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
+                        -o jsonpath='{.spec.ports[0].nodePort}'
+                    """).trim()
                     
-                    # Verify image exists in Minikube
-                    minikube ssh -- "docker images | grep yt-comment-sentiment-analysis"
+                    // Start ngrok tunnel
+                    withEnv(["NGROK_PORT=${SERVICE_PORT}"]) {
+                        sh '''
+                            # Install jq if needed
+                            if ! command -v jq &> /dev/null; then
+                                sudo apt-get update
+                                sudo apt-get install -y jq
+                            fi
+                            
+                            # Install ngrok if needed
+                            if ! command -v ngrok &> /dev/null; then
+                                curl -s https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip -o ngrok.zip
+                                unzip ngrok.zip
+                                chmod +x ngrok
+                                sudo mv ngrok /usr/local/bin/
+                            fi
+                            
+                            # Start ngrok in background
+                            nohup ngrok http ${NGROK_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
+                            sleep 5  # Wait for ngrok to start
+                            
+                            # Get public URL
+                            NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+                            echo "Ngrok Public URL: ${NGROK_URL}"
+                            
+                            # Test the API through ngrok
+                            curl -X POST "${NGROK_URL}/predict" \
+                                -H "Content-Type: application/json" \
+                                -d '{"text":"This is a test comment"}'
+                            
+                            # Save URL for later use
+                            echo "NGROK_URL=${NGROK_URL}" > ngrok.env
+                        '''
+                    }
                     
-                    # Check Kubernetes events
-                    kubectl get events --sort-by='.lastTimestamp'
+                    // Load the ngrok URL
+                    def NGROK_URL = readFile('ngrok.env').trim()
                     
-                    # Detailed pod debug if exists
-                    kubectl get pods -o wide
-                    kubectl describe pod -l app=yt-comment-analysis || true
-                '''
+                    // Additional verification steps
+                    sh """
+                        # Test positive sentiment
+                        curl -s -X POST "${NGROK_URL}/predict" \
+                            -H "Content-Type: application/json" \
+                            -d '{"text":"I love this video!"}' | grep -q '"sentiment":"positive"'
+                        
+                        # Test negative sentiment
+                        curl -s -X POST "${NGROK_URL}/predict" \
+                            -H "Content-Type: application/json" \
+                            -d '{"text":"This is terrible"}' | grep -q '"sentiment":"negative"'
+                    """
+                }
+            }
+            post {
+                always {
+                    // Clean up ngrok process
+                    sh 'pkill ngrok || true'
+                    archiveArtifacts 'ngrok.log'
+                }
             }
         }
 
