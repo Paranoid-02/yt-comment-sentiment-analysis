@@ -270,6 +270,24 @@ pipeline {
             }
         }
 
+        stage('Get Service URL') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh '''
+                        echo "Service can be accessed at:"
+                        
+                        # For NodePort service
+                        NODE_PORT=$(KUBECONFIG=${KUBECONFIG} kubectl get service yt-comment-service -o jsonpath='{.spec.ports[0].nodePort}')
+                        MINIKUBE_IP=$(KUBECONFIG=${KUBECONFIG} minikube ip)
+                        echo "http://${MINIKUBE_IP}:${NODE_PORT}"
+                        
+                        # Or for port-forwarding option
+                        echo "Or run: kubectl port-forward service/yt-comment-service 8080:5000"
+                        echo "Then access: http://localhost:8080"
+                    '''
+                }
+            }
+        }
         // stage('Verify Deployment') {
         //     steps {
         //         script {
