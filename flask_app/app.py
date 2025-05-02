@@ -15,7 +15,7 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 from mlflow.tracking import MlflowClient
 import matplotlib.dates as mdates
-from prometheus_metrics import *
+# from prometheus_metrics import *
 import time
 
 app = Flask(__name__)
