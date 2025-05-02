@@ -282,8 +282,8 @@ pipeline {
                         echo "http://${MINIKUBE_IP}:${NODE_PORT}"
                         
                         # Or for port-forwarding option
-                        echo "Or run: kubectl port-forward service/yt-comment-service 8080:5000"
-                        echo "Then access: http://localhost:8080"
+                        echo "Or run: kubectl port-forward service/yt-comment-service 8081:5000"
+                        echo "Then access: http://localhost:8081"
                     '''
                 }
             }
