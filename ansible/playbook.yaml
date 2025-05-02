@@ -25,19 +25,6 @@
         src: templates/deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
       
-    - name: Create AWS credentials secret
-      kubernetes.core.k8s:
-        state: present
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: app-secrets
-            namespace: "{{ k8s_namespace }}"
-          data:
-            aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | b64encode }}"
-            aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | b64encode }}"
-      
     - name: Apply Kubernetes resources
       kubernetes.core.k8s:
         state: present
@@ -67,3 +54,17 @@
       debug:
         msg: "Pod status: {{ pods.stdout }}"
       when: rollout.rc != 0
+
+
+    # - name: Create AWS credentials secret
+    #   kubernetes.core.k8s:
+    #     state: present
+    #     definition:
+    #       apiVersion: v1
+    #       kind: Secret
+    #       metadata:
+    #         name: app-secrets
+    #         namespace: "{{ k8s_namespace }}"
+    #       data:
+    #         aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | b64encode }}"
+    #         aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | b64encode }}"
