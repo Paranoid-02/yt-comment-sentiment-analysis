@@ -189,6 +189,44 @@ pipeline {
             }
         }
 
+        // stage('Deploy to Kubernetes Via Ansible') {
+        //     steps {
+        //         withCredentials([
+        //             sshUserPrivateKey(
+        //                 credentialsId: 'jenkins-ssh-key',
+        //                 keyFileVariable: 'SSH_KEY'
+        //             ),
+        //             usernamePassword(
+        //                 credentialsId: 'DockerHubCred',
+        //                 usernameVariable: 'DOCKER_USER',
+        //                 passwordVariable: 'DOCKER_PASS'
+        //             )
+        //         ]) {
+        //             dir('ansible') {
+        //                 sh '''
+        //                     # Install required packages if needed
+        //                     pip install ansible==8.6.1 kubernetes==29.0.0 openshift==0.13.1
+
+        //                     # Activate the virtual environment
+        //                     . ../venv/bin/activate
+
+        //                     # Print debug info
+        //                     echo "PATH: $PATH"
+        //                     which minikube
+        //                     which ansible-playbook
+                            
+        //                     # Run Ansible with proper image name
+        //                     ansible-playbook -i inventory.ini playbook.yaml \
+        //                         --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
+                            
+        //                     # Verify deployment
+        //                     kubectl get deployments -l app=yt-comment-analysis
+        //                     kubectl get pods -l app=yt-comment-analysis
+        //                 '''
+        //             }
+        //         }
+        //     }
+        // }
         stage('Deploy to Kubernetes Via Ansible') {
             steps {
                 withCredentials([
@@ -200,6 +238,10 @@ pipeline {
                         credentialsId: 'DockerHubCred',
                         usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_PASS'
+                    ),
+                    file(
+                        credentialsId: 'kubeconfig',
+                        variable: 'KUBECONFIG'
                     )
                 ]) {
                     dir('ansible') {
@@ -215,13 +257,13 @@ pipeline {
                             which minikube
                             which ansible-playbook
                             
-                            # Run Ansible with proper image name
-                            ansible-playbook -i inventory.ini playbook.yaml \
+                            # Run Ansible with proper image name and KUBECONFIG
+                            KUBECONFIG=${KUBECONFIG} ansible-playbook -i inventory.ini playbook.yaml \
                                 --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
                             
-                            # Verify deployment
-                            kubectl get deployments -l app=yt-comment-analysis
-                            kubectl get pods -l app=yt-comment-analysis
+                            # Verify deployment with KUBECONFIG
+                            KUBECONFIG=${KUBECONFIG} kubectl get deployments -l app=yt-comment-analysis
+                            KUBECONFIG=${KUBECONFIG} kubectl get pods -l app=yt-comment-analysis
                         '''
                     }
                 }
