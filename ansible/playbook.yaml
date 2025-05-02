@@ -28,6 +28,7 @@
     - name: Create AWS credentials secret
       kubernetes.core.k8s:
         state: present
+        verify_ssl: no
         definition:
           apiVersion: v1
           kind: Secret
