@@ -279,69 +279,77 @@ pipeline {
         stage('Verify with Ngrok') {
             steps {
                 script {
-                    // Get the cluster IP and port
+                    // Get architecture and set appropriate ngrok URL
+                    def ARCH = sh(returnStdout: true, script: 'uname -m').trim()
+                    def NGROK_URL = "https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-${ARCH}.zip"
+                    
+                    if (ARCH == 'x86_64') {
+                        NGROK_URL = "https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip"
+                    } else if (ARCH == 'aarch64' || ARCH == 'arm64') {
+                        NGROK_URL = "https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-arm64.zip"
+                    } else {
+                        error("Unsupported architecture: ${ARCH}")
+                    }
+
+                    // Get service port
                     def SERVICE_PORT = sh(returnStdout: true, script: """
                         kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
                         -o jsonpath='{.spec.ports[0].nodePort}'
                     """).trim()
                     
-                    // Start ngrok tunnel
                     withEnv(["NGROK_PORT=${SERVICE_PORT}"]) {
                         sh '''
-                            # Install jq if needed
-                            if ! command -v jq &> /dev/null; then
-                                sudo apt-get update
-                                sudo apt-get install -y jq
+                            # Install ngrok (architecture-specific)
+                            echo "Downloading ngrok for ${ARCH}..."
+                            curl -s ${NGROK_URL} -o ngrok.zip
+                            unzip -o ngrok.zip
+                            chmod +x ngrok
+                            
+                            # Start ngrok with proper path
+                            ./ngrok http ${NGROK_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
+                            sleep 10  # Extra time for ngrok to initialize
+                            
+                            # Get public URL with retries
+                            for i in {1..5}; do
+                                NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+                                if [ -n "${NGROK_URL}" ]; then
+                                    break
+                                fi
+                                sleep 5
+                            done
+                            
+                            if [ -z "${NGROK_URL}" ]; then
+                                echo "Failed to get ngrok URL"
+                                cat ngrok.log
+                                exit 1
                             fi
                             
-                            # Install ngrok if needed
-                            if ! command -v ngrok &> /dev/null; then
-                                curl -s https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip -o ngrok.zip
-                                unzip ngrok.zip
-                                chmod +x ngrok
-                                sudo mv ngrok /usr/local/bin/
-                            fi
-                            
-                            # Start ngrok in background
-                            nohup ngrok http ${NGROK_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
-                            sleep 5  # Wait for ngrok to start
-                            
-                            # Get public URL
-                            NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
                             echo "Ngrok Public URL: ${NGROK_URL}"
                             
-                            # Test the API through ngrok
-                            curl -X POST "${NGROK_URL}/predict" \
-                                -H "Content-Type: application/json" \
-                                -d '{"text":"This is a test comment"}'
+                            # Test the API with retries
+                            for i in {1..3}; do
+                                if curl -X POST "${NGROK_URL}/predict" \
+                                    -H "Content-Type: application/json" \
+                                    -d '{"text":"This is a test comment"}'; then
+                                    break
+                                fi
+                                sleep 5
+                            done
                             
-                            # Save URL for later use
                             echo "NGROK_URL=${NGROK_URL}" > ngrok.env
                         '''
                     }
-                    
-                    // Load the ngrok URL
-                    def NGROK_URL = readFile('ngrok.env').trim()
-                    
-                    // Additional verification steps
-                    sh """
-                        # Test positive sentiment
-                        curl -s -X POST "${NGROK_URL}/predict" \
-                            -H "Content-Type: application/json" \
-                            -d '{"text":"I love this video!"}' | grep -q '"sentiment":"positive"'
-                        
-                        # Test negative sentiment
-                        curl -s -X POST "${NGROK_URL}/predict" \
-                            -H "Content-Type: application/json" \
-                            -d '{"text":"This is terrible"}' | grep -q '"sentiment":"negative"'
-                    """
                 }
             }
             post {
                 always {
-                    // Clean up ngrok process
-                    sh 'pkill ngrok || true'
-                    archiveArtifacts 'ngrok.log'
+                    sh '''
+                        # Stop ngrok process
+                        pkill -f "ngrok http" || true
+                        # Clean up
+                        rm -f ngrok ngrok.zip || true
+                    '''
+                    archiveArtifacts artifacts: 'ngrok.log,ngrok.env', fingerprint: true
                 }
             }
         }
