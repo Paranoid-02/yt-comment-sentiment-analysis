@@ -282,69 +282,69 @@ pipeline {
         //     }
         // }
 
-        stage('Verify with Ngrok') {
-            steps {
-                script {
-                    // Install ngrok using official method
-                    sh '''
-                        # Install ngrok via package manager
-                        curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-                        | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-                        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
-                        | sudo tee /etc/apt/sources.list.d/ngrok.list
-                        sudo apt-get update
-                        sudo apt-get install -y ngrok
-                    '''
+        // stage('Verify with Ngrok') {
+        //     steps {
+        //         script {
+        //             // Install ngrok using official method
+        //             sh '''
+        //                 # Install ngrok via package manager
+        //                 curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
+        //                 | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        //                 echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
+        //                 | sudo tee /etc/apt/sources.list.d/ngrok.list
+        //                 sudo apt-get update
+        //                 sudo apt-get install -y ngrok
+        //             '''
                     
-                    // Get service details
-                    def SERVICE_PORT = sh(returnStdout: true, script: """
-                        kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
-                        -o jsonpath='{.spec.ports[0].nodePort}'
-                    """).trim()
+        //             // Get service details
+        //             def SERVICE_PORT = sh(returnStdout: true, script: """
+        //                 kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
+        //                 -o jsonpath='{.spec.ports[0].nodePort}'
+        //             """).trim()
                     
-                    withCredentials([string(credentialsId: 'ngrok-auth-token', variable: 'NGROK_AUTH_TOKEN')]) {
-                        sh '''
-                            # Start ngrok tunnel
-                            ngrok http ${SERVICE_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
-                            sleep 5  # Wait for tunnel establishment
+        //             withCredentials([string(credentialsId: 'ngrok-auth-token', variable: 'NGROK_AUTH_TOKEN')]) {
+        //                 sh '''
+        //                     # Start ngrok tunnel
+        //                     ngrok http ${SERVICE_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
+        //                     sleep 5  # Wait for tunnel establishment
                             
-                            # Get public URL with retries
-                            for i in {1..5}; do
-                                NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-                                [ -n "${NGROK_URL}" ] && break
-                                sleep 2
-                            done
+        //                     # Get public URL with retries
+        //                     for i in {1..5}; do
+        //                         NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+        //                         [ -n "${NGROK_URL}" ] && break
+        //                         sleep 2
+        //                     done
                             
-                            if [ -z "${NGROK_URL}" ]; then
-                                echo "❌ Failed to establish ngrok tunnel"
-                                cat ngrok.log
-                                exit 1
-                            fi
+        //                     if [ -z "${NGROK_URL}" ]; then
+        //                         echo "❌ Failed to establish ngrok tunnel"
+        //                         cat ngrok.log
+        //                         exit 1
+        //                     fi
                             
-                            echo "✅ Ngrok Public URL: ${NGROK_URL}"
-                            echo "NGROK_URL=${NGROK_URL}" > ngrok.env
+        //                     echo "✅ Ngrok Public URL: ${NGROK_URL}"
+        //                     echo "NGROK_URL=${NGROK_URL}" > ngrok.env
                             
-                            # Test API endpoint
-                            curl -X POST "${NGROK_URL}/predict" \
-                            -H "Content-Type: application/json" \
-                            -d '{"text":"Testing connection through ngrok"}'
-                        '''
-                    }
-                }
-            }
-            post {
-                always {
-                    sh '''
-                        # Stop ngrok and clean up
-                        pkill ngrok || true
-                        sudo apt-get remove -y ngrok || true
-                        sudo rm -f /etc/apt/sources.list.d/ngrok.list \
-                                /etc/apt/trusted.gpg.d/ngrok.asc
-                    '''
-                    archiveArtifacts artifacts: 'ngrok.log,ngrok.env', fingerprint: true
-                }
-            }
-        }
+        //                     # Test API endpoint
+        //                     curl -X POST "${NGROK_URL}/predict" \
+        //                     -H "Content-Type: application/json" \
+        //                     -d '{"text":"Testing connection through ngrok"}'
+        //                 '''
+        //             }
+        //         }
+        //     }
+        //     post {
+        //         always {
+        //             sh '''
+        //                 # Stop ngrok and clean up
+        //                 pkill ngrok || true
+        //                 sudo apt-get remove -y ngrok || true
+        //                 sudo rm -f /etc/apt/sources.list.d/ngrok.list \
+        //                         /etc/apt/trusted.gpg.d/ngrok.asc
+        //             '''
+        //             archiveArtifacts artifacts: 'ngrok.log,ngrok.env', fingerprint: true
+        //         }
+        //     }
+        // }
 
         // stage('Deploy Monitoring') {
         //     steps {
