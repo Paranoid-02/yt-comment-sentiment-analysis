@@ -11,7 +11,8 @@ spec:
     - port: 80
       targetPort: 5000
       nodePort: 30080
-
+  selector:
+    app: yt-comment-analysis
 
 
 #---
