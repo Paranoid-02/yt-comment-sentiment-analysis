@@ -253,6 +253,19 @@ pipeline {
             }
         }
 
+        stage('Validate Resources') {
+            steps {
+                sh '''
+                echo "=== Node Resources ==="
+                kubectl describe nodes | grep -A 10 "Allocatable"
+                echo "=== Current Pods ==="
+                kubectl get pods -n logging
+                echo "=== Storage Classes ==="
+                kubectl get storageclass
+                '''
+            }
+        }
+
         stage('Deploy ELK Stack') {
             steps {
                 dir('elk') {
