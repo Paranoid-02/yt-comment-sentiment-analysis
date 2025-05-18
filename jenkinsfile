@@ -253,19 +253,6 @@ pipeline {
             }
         }
 
-        stage('Prepare Cluster') {
-            steps {
-                sh '''
-                # For Minikube only
-                minikube addons enable storage-provisioner
-                minikube addons enable default-storageclass
-                
-                # Verify resources
-                kubectl describe nodes | grep -A 5 "Allocatable"
-                '''
-            }
-        }
-
         stage('Deploy ELK Stack') {
             steps {
                 dir('elk') {
