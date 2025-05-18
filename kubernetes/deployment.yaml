@@ -32,3 +32,5 @@ spec:
             secretKeyRef:
               name: app-secrets
               key: aws-secret
+        - name: AWS_REGION
+          value: eu-north-1
