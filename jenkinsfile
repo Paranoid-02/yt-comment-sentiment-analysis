@@ -182,8 +182,8 @@ pipeline {
                 )]) {
                     sh '''
                         docker login -u $DOCKER_USER -p $DOCKER_PASS
-                        docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:latest .
-                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:latest
+                        docker build -t $DOCKER_USER/yt-comment-sentiment-analysis:$BUILD_NUMBER .
+                        docker push $DOCKER_USER/yt-comment-sentiment-analysis:$BUILD_NUMBER
                     '''
                 }
             }
