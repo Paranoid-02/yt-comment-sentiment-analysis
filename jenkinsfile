@@ -258,27 +258,23 @@ pipeline {
                 dir('elk') {
                     withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                         sh '''
-                            export KUBECONFIG=${KUBECONFIG}
-                            kubectl create namespace logging || true
-                            # Install Helm
-                            curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-                            chmod 700 get_helm.sh
-                            ./get_helm.sh --version v${HELM_VERSION}
+                        export KUBECONFIG=${KUBECONFIG}
+                        
+                        # Create namespace
+                        kubectl create namespace logging || true
+                        
+                        # Deploy Elasticsearch with longer timeout
+                        helm upgrade --install elasticsearch elastic/elasticsearch \
+                            -n logging \
+                            -f elk-stack-values.yaml
                             
-                            # Deploy Elasticsearch
-                            helm repo add elastic https://helm.elastic.co
-                            helm repo update
-                            helm upgrade --install elasticsearch elastic/elasticsearch \
-                                -n logging \
-                                -f elk-stack-values.yaml || exit 1
-                            
-                            # Wait for Elasticsearch
-                            kubectl wait --for=condition=ready pod -l app=elasticsearch-master -n logging --timeout=300s || exit 1
-                            
-                            # Deploy Kibana
-                            helm upgrade --install kibana elastic/kibana \
-                                -n logging \
-                                --set service.type=NodePort || exit 1
+                        # Debug immediately if fails
+                        if ! kubectl wait --for=condition=ready pod -l app=elasticsearch-master -n logging --timeout=600s; then
+                            echo "❌ Elasticsearch failed to start"
+                            kubectl describe pods -n logging -l app=elasticsearch-master
+                            kubectl logs -n logging elasticsearch-master-0
+                            exit 1
+                        fi
                         '''
                     }
                 }
