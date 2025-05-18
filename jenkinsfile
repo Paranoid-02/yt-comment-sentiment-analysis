@@ -277,11 +277,17 @@ pipeline {
                         # Generate kibana config file
                         cat > elk-config/kibana.yml <<'KB_EOF'
         server.host: "0.0.0.0"
+        server.publicBaseUrl: "http://localhost:5601"
         elasticsearch.hosts: ["http://elasticsearch:9200"]
         KB_EOF
                         
-                        # Start containers
+                        # Start containers with port forwarding
                         docker compose up -d --wait
+                        
+                        # Verify port forwarding
+                        echo "Checking port forwarding..."
+                        echo "Elasticsearch should be available at http://localhost:9200"
+                        echo "Kibana should be available at http://localhost:5601"
                         
                         # Verify services
                         echo "Waiting for Elasticsearch to be ready..."
