@@ -257,7 +257,7 @@ pipeline {
             steps {
                 dir('elk') {
                     sh '''#!/bin/bash
-                        set -e  # Exit immediately if any command fails
+                        set -ex  # Enable debugging
                         
                         # Clean previous deployment
                         docker compose down -v || true
@@ -266,7 +266,7 @@ pipeline {
                         mkdir -p elk-config
                         chmod -R 755 elk-config
                         
-                        # Generate elasticsearch config file
+                        # Generate config files
                         cat > elk-config/elasticsearch.yml <<'ES_EOF'
         cluster.name: "docker-cluster"
         network.host: 0.0.0.0
@@ -274,27 +274,52 @@ pipeline {
         xpack.security.enabled: false
         ES_EOF
                         
-                        # Generate kibana config file
                         cat > elk-config/kibana.yml <<'KB_EOF'
         server.host: "0.0.0.0"
         server.publicBaseUrl: "http://localhost:5601"
         elasticsearch.hosts: ["http://elasticsearch:9200"]
+        monitoring.ui.container.elasticsearch.enabled: true
         KB_EOF
                         
-                        # Start containers with port forwarding
+                        # Start containers
                         docker compose up -d --wait
                         
-                        # Verify port forwarding
-                        echo "Checking port forwarding..."
-                        echo "Elasticsearch should be available at http://localhost:9200"
-                        echo "Kibana should be available at http://localhost:5601"
+                        # Debugging: Show running containers
+                        echo "--- Running Containers ---"
+                        docker ps -a
                         
-                        # Verify services
-                        echo "Waiting for Elasticsearch to be ready..."
-                        timeout 120 bash -c 'until curl -s http://localhost:9200; do sleep 5; done'
+                        # Debugging: Show logs
+                        echo "--- Elasticsearch Logs ---"
+                        docker compose logs elasticsearch
+                        echo "--- Kibana Logs ---"
+                        docker compose logs kibana
                         
-                        echo "Checking Kibana status..."
-                        curl -s http://localhost:5601/api/status | jq .status.overall.state
+                        # Verify Elasticsearch
+                        echo "Testing Elasticsearch connection..."
+                        for i in {1..10}; do
+                            if curl -s http://localhost:9200; then
+                                echo "Elasticsearch is up!"
+                                break
+                            fi
+                            sleep 10
+                            echo "Attempt $i/10: Elasticsearch not ready yet..."
+                        done
+                        
+                        # Verify Kibana
+                        echo "Testing Kibana connection..."
+                        for i in {1..15}; do
+                            if curl -s http://localhost:5601/api/status; then
+                                echo "Kibana is up!"
+                                break
+                            fi
+                            sleep 10
+                            echo "Attempt $i/15: Kibana not ready yet..."
+                        done
+                        
+                        # Final status check
+                        echo "--- Final Status ---"
+                        curl -s http://localhost:9200/_cluster/health | jq
+                        curl -s http://localhost:5601/api/status | jq
                     '''
                 }
             }

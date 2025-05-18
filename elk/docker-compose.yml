@@ -2,43 +2,50 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
     environment:
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g  # Increased memory
       - xpack.security.enabled=false
       - discovery.type=single-node
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
     volumes:
       - ./elk-config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
       - es_data:/usr/share/elasticsearch/data
     ports:
-      - "9200:9200"  # Forward host port 9200 to container port 9200
-      - "9300:9300"  # Additional port for node communication
-    networks:
-      - elk_net
+      - "9200:9200"
+      - "9300:9300"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 10s
-      timeout: 10s
-      retries: 5
+      timeout: 30s
+      retries: 10
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.13.4
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     volumes:
       - ./elk-config/kibana.yml:/usr/share/kibana/config/kibana.yml
     ports:
-      - "5601:5601"  # Forward host port 5601 to container port 5601
-    networks:
-      - elk_net
+      - "5601:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5601/api/status"]
-      interval: 10s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "curl -s http://localhost:5601/api/status | grep -q '\"overall\":{\"state\":\"green\"}'"]
+      interval: 15s
+      timeout: 30s
+      retries: 15
+    restart: on-failure
 
 volumes:
   es_data:
+    driver: local
 
 networks:
-  elk_net:
+  default:
+    name: elk_net
     driver: bridge
