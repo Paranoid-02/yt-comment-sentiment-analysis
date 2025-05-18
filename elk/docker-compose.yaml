@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4 # Using a recent version
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m # Adjust based on your agent's resources
+      - xpack.security.enabled=false # For simplicity in dev/test. Enable for production.
+      # - ELASTIC_PASSWORD=yoursecurepassword # Required if xpack.security.enabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data # Persist Elasticsearch data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - elk_net
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline/:ro
+      # Optional: Mount custom logstash.yml if needed
+      # - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    ports:
+      - "5044:5044" # Beats input port
+      - "9600:9600" # Logstash monitoring API
+    environment:
+      LS_JAVA_OPTS: "-Xms256m -Xmx256m" # Adjust based on your agent's resources
+    networks:
+      - elk_net
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200 # Points to the Elasticsearch service
+      # ELASTICSEARCH_USERNAME: elastic # If security is enabled on Elasticsearch
+      # ELASTICSEARCH_PASSWORD: yoursecurepassword
+    networks:
+      - elk_net
+    depends_on:
+      - elasticsearch
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.4
+    container_name: filebeat
+    user: root # Required to access Docker log files and Docker socket
+    volumes:
+      - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro # Mount Filebeat configuration
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro # Docker container logs path
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Docker socket for metadata
+    environment:
+      FILEBEAT_INTERNAL_LOGGING_LEVEL: info
+      LOGSTASH_HOST: logstash:5044 # Environment variable used in filebeat.yml
+    command: filebeat -e -strict.perms=false # Log to stderr, allow config mounting by root
+    networks:
+      - elk_net
+    depends_on:
+      - logstash
+
+volumes:
+  esdata: # Persists Elasticsearch data
+    driver: local
+
+networks:
+  elk_net: # Custom network for ELK components
+    driver: bridge

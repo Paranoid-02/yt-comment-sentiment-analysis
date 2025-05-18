@@ -9,6 +9,7 @@ pipeline {
         NGROK_AUTH_TOKEN = credentials('ngrok-auth-token')
         SERVICE_NAME = 'yt-comment-service'
         NAMESPACE = 'default'
+        ELK_DIR = "elk"
     }
     
     stages {
@@ -189,44 +190,27 @@ pipeline {
             }
         }
 
-        // stage('Deploy to Kubernetes Via Ansible') {
-        //     steps {
-        //         withCredentials([
-        //             sshUserPrivateKey(
-        //                 credentialsId: 'jenkins-ssh-key',
-        //                 keyFileVariable: 'SSH_KEY'
-        //             ),
-        //             usernamePassword(
-        //                 credentialsId: 'DockerHubCred',
-        //                 usernameVariable: 'DOCKER_USER',
-        //                 passwordVariable: 'DOCKER_PASS'
-        //             )
-        //         ]) {
-        //             dir('ansible') {
-        //                 sh '''
-        //                     # Install required packages if needed
-        //                     pip install ansible==8.6.1 kubernetes==29.0.0 openshift==0.13.1
+        stage('Setup ELK Stack') {
+            steps {
+                echo "Starting ELK Stack using Docker Compose..."
+                dir("${ELK_DIR}") { // Change directory to elk/
+                    // Ensure previous instances are down before starting
+                    sh "docker-compose down -v --remove-orphans || true"
+                    // Start ELK stack in detached mode, build if configurations changed
+                    sh "docker-compose up -d --build"
+                }
+                echo "Waiting for ELK stack to initialize..."
+                // Simple wait. For production, implement more robust health checks.
+                // Adjust time as ELK services (especially Elasticsearch) can take a while to start.
+                sleep(time: 90, unit: 'SECONDS')
+                echo "ELK Stack should be up and running."
+                // Basic check to see if Elasticsearch is responding
+                sh "curl -s -o /dev/null -w '%{http_code}' http://localhost:9200"
+                echo "Kibana should be accessible at http://localhost:5601"
+                echo "Filebeat is configured to send logs to Logstash at logstash:5044 (within Docker network)"
+            }
+        }
 
-        //                     # Activate the virtual environment
-        //                     . ../venv/bin/activate
-
-        //                     # Print debug info
-        //                     echo "PATH: $PATH"
-        //                     which minikube
-        //                     which ansible-playbook
-                            
-        //                     # Run Ansible with proper image name
-        //                     ansible-playbook -i inventory.ini playbook.yaml \
-        //                         --extra-vars "image_name=${DOCKER_USER}/yt-comment-sentiment-analysis:latest"
-                            
-        //                     # Verify deployment
-        //                     kubectl get deployments -l app=yt-comment-analysis
-        //                     kubectl get pods -l app=yt-comment-analysis
-        //                 '''
-        //             }
-        //         }
-        //     }
-        // }
         stage('Deploy to Kubernetes Via Ansible') {
             steps {
                 withCredentials([
@@ -288,181 +272,7 @@ pipeline {
                 }
             }
         }
-        // stage('Verify Deployment') {
-        //     steps {
-        //         script {
-        //             // 1. Basic Kubernetes verification
-        //             sh """
-        //                 kubectl rollout status deployment/yt-comment-deployment -n ${NAMESPACE} --timeout=180s
-        //                 kubectl get pods -l app=yt-comment-analysis -n ${NAMESPACE} -o wide
-        //             """
-                    
-        //             // 2. Ngrok testing
-        //             def SERVICE_PORT = sh(returnStdout: true, script: """
-        //                 kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
-        //                 -o jsonpath='{.spec.ports[0].nodePort}'
-        //             """).trim()
-                    
-        //             withEnv(["NGROK_PORT=${SERVICE_PORT}"]) {
-        //                 sh '''
-        //                     ./ngrok http ${NGROK_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
-        //                     sleep 5
-        //                     NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-        //                     echo "Testing endpoint: ${NGROK_URL}/predict"
-                            
-        //                     # Run test cases
-        //                     curl -X POST "${NGROK_URL}/predict" \
-        //                         -H "Content-Type: application/json" \
-        //                         -d '{"text":"Great content!"}'
-                            
-        //                     # Verify response format
-        //                     curl -s "${NGROK_URL}/healthcheck" | grep -q "Model Loaded"
-                            
-        //                     # Save URL for artifact
-        //                     echo "Public Test URL: ${NGROK_URL}" > ngrok_url.txt
-        //                 '''
-        //             }
-                    
-        //             // 3. Load test results
-        //             def NGROK_URL = readFile('ngrok_url.txt').trim()
-        //             currentBuild.description = "Public Test URL: ${NGROK_URL}"
-        //         }
-        //     }
-        //     post {
-        //         always {
-        //             sh 'pkill ngrok || true'
-        //             archiveArtifacts artifacts: 'ngrok.log,ngrok_url.txt', fingerprint: true
-        //         }
-        //     }
-        // }
 
-        // stage('Verify with Ngrok') {
-        //     steps {
-        //         script {
-        //             // Install ngrok using official method
-        //             sh '''
-        //                 # Install ngrok via package manager
-        //                 curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc \
-        //                 | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-        //                 echo "deb https://ngrok-agent.s3.amazonaws.com buster main" \
-        //                 | sudo tee /etc/apt/sources.list.d/ngrok.list
-        //                 sudo apt-get update
-        //                 sudo apt-get install -y ngrok
-        //             '''
-                    
-        //             // Get service details
-        //             def SERVICE_PORT = sh(returnStdout: true, script: """
-        //                 kubectl get svc ${SERVICE_NAME} -n ${NAMESPACE} \
-        //                 -o jsonpath='{.spec.ports[0].nodePort}'
-        //             """).trim()
-                    
-        //             withCredentials([string(credentialsId: 'ngrok-auth-token', variable: 'NGROK_AUTH_TOKEN')]) {
-        //                 sh '''
-        //                     # Start ngrok tunnel
-        //                     ngrok http ${SERVICE_PORT} --log=stdout --authtoken=${NGROK_AUTH_TOKEN} > ngrok.log &
-        //                     sleep 5  # Wait for tunnel establishment
-                            
-        //                     # Get public URL with retries
-        //                     for i in {1..5}; do
-        //                         NGROK_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-        //                         [ -n "${NGROK_URL}" ] && break
-        //                         sleep 2
-        //                     done
-                            
-        //                     if [ -z "${NGROK_URL}" ]; then
-        //                         echo "❌ Failed to establish ngrok tunnel"
-        //                         cat ngrok.log
-        //                         exit 1
-        //                     fi
-                            
-        //                     echo "✅ Ngrok Public URL: ${NGROK_URL}"
-        //                     echo "NGROK_URL=${NGROK_URL}" > ngrok.env
-                            
-        //                     # Test API endpoint
-        //                     curl -X POST "${NGROK_URL}/predict" \
-        //                     -H "Content-Type: application/json" \
-        //                     -d '{"text":"Testing connection through ngrok"}'
-        //                 '''
-        //             }
-        //         }
-        //     }
-        //     post {
-        //         always {
-        //             sh '''
-        //                 # Stop ngrok and clean up
-        //                 pkill ngrok || true
-        //                 sudo apt-get remove -y ngrok || true
-        //                 sudo rm -f /etc/apt/sources.list.d/ngrok.list \
-        //                         /etc/apt/trusted.gpg.d/ngrok.asc
-        //             '''
-        //             archiveArtifacts artifacts: 'ngrok.log,ngrok.env', fingerprint: true
-        //         }
-        //     }
-        // }
-
-        // stage('Deploy Monitoring') {
-        //     steps {
-        //         dir('kubernetes/monitoring') {
-        //             sh '''
-        //                 # Apply RBAC first
-        //                 kubectl apply -f prometheus-rbac.yaml
-                        
-        //                 # Install Operator
-        //                 kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.68.0/bundle.yaml
-        //                 sleep 10 # Wait for CRDs to register
-                        
-        //                 # Deploy our monitoring stack
-        //                 kubectl apply -f prometheus-configmap.yaml
-        //                 kubectl apply -f prometheus-deployment.yaml
-        //                 kubectl apply -f grafana-deployment.yaml
-        //                 kubectl apply -f flask-service-monitor.yaml
-                        
-        //                 # Verify
-        //                 kubectl get servicemonitors
-        //                 kubectl get prometheuses
-        //             '''
-        //         }
-        //     }
-        // }
-
-        // stage('Configure Grafana') {
-        //     steps {
-        //         script {
-        //             // Get Grafana URL
-        //             def grafana_url = sh(returnStdout: true, script: """
-        //                 minikube service grafana --url || \\
-        //                 kubectl get svc grafana -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:3000'
-        //             """).trim()
-                    
-        //             // Import dashboard (using API)
-        //             sh """
-        //                 curl -X POST \
-        //                 -H "Content-Type: application/json" \
-        //                 -d @kubernetes/monitoring/grafana-dashboards/flask-metrics-dashboard.json \
-        //                 "${grafana_url}/api/dashboards/import"
-        //             """
-                    
-        //             echo "Grafana Dashboard available at: ${grafana_url}"
-        //         }
-        //     }
-        // }
-
-        // stage('Verify Monitoring') {
-        //     steps {
-        //         sh '''
-        //             # Check Prometheus is scraping
-        //             kubectl exec -it $(kubectl get pods -l app=prometheus -o jsonpath='{.items[0].metadata.name}') -- \\
-        //                 curl -s http://localhost:9090/api/v1/targets | grep flask-app
-                    
-        //             # Make test request to generate metrics
-        //             APP_URL=$(kubectl get svc yt-comment-service -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}:80')
-        //             curl -X POST "${APP_URL}/predict" -H "Content-Type: application/json" -d '{"text":"sample"}'
-                    
-        //             # Check metrics endpoint
-        //             curl -s "${APP_URL}/metrics" | grep flask_app_request_count
-        //         '''
-        //     }
-        // }
     }
 
     post {
