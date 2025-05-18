@@ -1,17 +1,18 @@
 # elk-stack-values.yaml
 elasticsearch:
+  replicas: 1
   resources:
     requests:
-      cpu: "1000m"
-      memory: "4Gi"
+      cpu: "500m"
+      memory: "1Gi"
     limits:
-      memory: "8Gi"
+      memory: "2Gi"
   volumeClaimTemplate:
     accessModes: ["ReadWriteOnce"]
     storageClassName: "standard"
     resources:
       requests:
-        storage: "10Gi"
+        storage: "5Gi"
 
 kibana:
   enabled: true
