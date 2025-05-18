@@ -190,23 +190,6 @@ pipeline {
             }
         }
 
-        stage('Setup ELK Stack') {
-            steps {
-                echo "Starting ELK Stack using Docker Compose V2..."
-                dir("${ELK_DIR}") { // ELK_DIR should contain your docker-compose.yml
-                    // Use Docker Compose V2 CLI plugin (docker compose with a space)
-                    sh "docker compose down -v --remove-orphans || true"
-                    sh "docker compose up -d --build"
-                }
-                echo "Waiting for ELK stack to initialize..."
-                sleep(time: 90, unit: 'SECONDS') // Adjust as needed
-                echo "ELK Stack should be up and running."
-                // Basic check for Elasticsearch
-                sh "curl -s -o /dev/null -w '%{http_code}\\n' http://localhost:9200 || echo 'Elasticsearch not responding on localhost:9200'"
-                echo "Kibana should be accessible at http://<jenkins-agent-ip>:5601"
-            }
-        }
-
         stage('Deploy to Kubernetes Via Ansible') {
             steps {
                 withCredentials([
