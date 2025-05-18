@@ -257,14 +257,14 @@ pipeline {
             steps {
                 dir('elk') {
                 sh '''
-                    # Use modern compose syntax
-                    docker compose version
-                    docker compose down -v || true
-                    docker compose up -d --wait
+                    # Ensure config directory exists
+                    mkdir -p elk-config
+                    [ -f elk-config/elasticsearch.yml ] || echo "cluster.name: docker-cluster" > elk-config/elasticsearch.yml
+                    [ -f elk-config/kibana.yml ] || echo "server.host: 0.0.0.0" > elk-config/kibana.yml
                     
-                    # Verify services
-                    timeout 120 bash -c 'until curl -s http://localhost:9200; do sleep 5; done'
-                    curl -s http://localhost:5601/api/status | jq .status.overall.state
+                    # Deploy
+                    docker compose down -v
+                    docker compose up -d --wait
                 '''
                 }
             }
