@@ -257,32 +257,37 @@ pipeline {
             steps {
                 dir('elk') {
                     sh '''#!/bin/bash
+                        set -e  # Exit immediately if any command fails
+                        
                         # Clean previous deployment
                         docker compose down -v || true
                         
-                        # Create config directory with proper permissions
+                        # Create config directory
                         mkdir -p elk-config
-                        chown -R jenkins:jenkins elk-config
                         chmod -R 755 elk-config
                         
-                        # Generate minimal config files
-                        cat <<'EOF' > elk-config/elasticsearch.yml
+                        # Generate elasticsearch config file
+                        cat > elk-config/elasticsearch.yml <<'ES_EOF'
         cluster.name: "docker-cluster"
         network.host: 0.0.0.0
         discovery.type: single-node
         xpack.security.enabled: false
-        EOF
+        ES_EOF
                         
-                        cat <<'EOF' > elk-config/kibana.yml
+                        # Generate kibana config file
+                        cat > elk-config/kibana.yml <<'KB_EOF'
         server.host: "0.0.0.0"
         elasticsearch.hosts: ["http://elasticsearch:9200"]
-        EOF
+        KB_EOF
                         
                         # Start containers
                         docker compose up -d --wait
                         
                         # Verify services
+                        echo "Waiting for Elasticsearch to be ready..."
                         timeout 120 bash -c 'until curl -s http://localhost:9200; do sleep 5; done'
+                        
+                        echo "Checking Kibana status..."
                         curl -s http://localhost:5601/api/status | jq .status.overall.state
                     '''
                 }
