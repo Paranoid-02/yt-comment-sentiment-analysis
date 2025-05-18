@@ -1,0 +1,23 @@
+# elk-stack-values.yaml
+elasticsearch:
+  enabled: true
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: "standard"
+    resources:
+      requests:
+        storage: 10Gi
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "2Gi"
+    limits:
+      memory: "4Gi"
+
+kibana:
+  enabled: true
+  service:
+    type: NodePort  # Or LoadBalancer for cloud providers
+
+logstash:
+  enabled: false  # Disable if not needed

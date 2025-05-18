@@ -10,6 +10,7 @@ pipeline {
         SERVICE_NAME = 'yt-comment-service'
         NAMESPACE = 'default'
         ELK_DIR = "elk"
+        HELM_VERSION = '3.17.3'
     }
     
     stages {
@@ -252,8 +253,64 @@ pipeline {
             }
         }
 
-    }
+        stage('Deploy ELK Stack') {
+            steps {
+                dir('elk') {
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        sh '''
+                            export KUBECONFIG=${KUBECONFIG}
+                            
+                            # Install Helm
+                            curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+                            chmod 700 get_helm.sh
+                            ./get_helm.sh --version v${HELM_VERSION}
+                            
+                            # Deploy Elasticsearch
+                            helm repo add elastic https://helm.elastic.co
+                            helm repo update
+                            helm upgrade --install elasticsearch elastic/elasticsearch \
+                                -n logging \
+                                -f elk-stack-values.yaml || exit 1
+                            
+                            # Wait for Elasticsearch
+                            kubectl wait --for=condition=ready pod -l app=elasticsearch-master -n logging --timeout=300s || exit 1
+                            
+                            # Deploy Kibana
+                            helm upgrade --install kibana elastic/kibana \
+                                -n logging \
+                                --set service.type=NodePort || exit 1
+                        '''
+                    }
+                }
+            }
+        }
 
+        stage('Deploy Fluentd') {
+            steps {
+                dir('elk') {
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                        sh '''
+                            export KUBECONFIG=${KUBECONFIG}
+                            kubectl apply -f fluentd-configmap.yaml -n logging
+                            kubectl apply -f https://raw.githubusercontent.com/fluent/fluentd-kubernetes-daemonset/master/fluentd-daemonset-elasticsearch-rbac.yaml -n logging
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Verify ELK') {
+            steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    sh '''
+                        export KUBECONFIG=${KUBECONFIG}
+                        kubectl wait --for=condition=ready pod -l app=kibana -n logging --timeout=300s
+                        echo "Kibana URL: $(kubectl get svc kibana-kibana -n logging -o jsonpath='{.spec.ports[0].nodePort}')"
+                    '''
+                }
+            }
+        }
+    }
     post {
         success {
             echo 'Pipeline succeeded!'
