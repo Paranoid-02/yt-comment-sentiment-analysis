@@ -255,14 +255,16 @@ pipeline {
 
         stage('Validate Resources') {
             steps {
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                 sh '''
-                echo "=== Node Resources ==="
-                kubectl describe nodes | grep -A 10 "Allocatable"
-                echo "=== Current Pods ==="
-                kubectl get pods -n logging
-                echo "=== Storage Classes ==="
-                kubectl get storageclass
+                    echo "=== Node Resources ==="
+                    kubectl --kubeconfig=${KUBECONFIG} describe nodes | grep -A 10 "Allocatable" || true
+                    echo "=== Current Pods ==="
+                    kubectl --kubeconfig=${KUBECONFIG} get pods -n logging || true
+                    echo "=== Storage Classes ==="
+                    kubectl --kubeconfig=${KUBECONFIG} get storageclass || true
                 '''
+                }
             }
         }
 
