@@ -192,16 +192,11 @@ pipeline {
 
         stage('Setup ELK Stack') {
             steps {
-                echo "Starting ELK Stack using Docker Compose..."
-                // Ensure ELK_DIR is correctly defined in your environment block, e.g., ELK_DIR = "elk"
-                // The ELK_DIR should contain your docker-compose.yml file
-                dir("${ELK_DIR}") {
-                    // Use a specific docker/compose image version to run the commands
-                    // Mount the Docker socket to allow control of the Docker daemon
-                    // Mount the current ELK directory from the workspace into /app inside the container
-                    // Set the working directory inside the container to /app
-                    sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \"${WORKSPACE}/${ELK_DIR}\":/app -w /app docker/compose:1.29.2 down -v --remove-orphans || true"
-                    sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \"${WORKSPACE}/${ELK_DIR}\":/app -w /app docker/compose:1.29.2 up -d --build"
+                echo "Starting ELK Stack using Docker Compose V2..."
+                dir("${ELK_DIR}") { // ELK_DIR should contain your docker-compose.yml
+                    // Use Docker Compose V2 CLI plugin (docker compose with a space)
+                    sh "docker compose down -v --remove-orphans || true"
+                    sh "docker compose up -d --build"
                 }
                 echo "Waiting for ELK stack to initialize..."
                 sleep(time: 90, unit: 'SECONDS') // Adjust as needed
