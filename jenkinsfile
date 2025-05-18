@@ -193,21 +193,22 @@ pipeline {
         stage('Setup ELK Stack') {
             steps {
                 echo "Starting ELK Stack using Docker Compose..."
-                dir("${ELK_DIR}") { // Change directory to elk/
-                    // Ensure previous instances are down before starting
-                    sh "docker-compose down -v --remove-orphans || true"
-                    // Start ELK stack in detached mode, build if configurations changed
-                    sh "docker-compose up -d --build"
+                // Ensure ELK_DIR is correctly defined in your environment block, e.g., ELK_DIR = "elk"
+                // The ELK_DIR should contain your docker-compose.yml file
+                dir("${ELK_DIR}") {
+                    // Use a specific docker/compose image version to run the commands
+                    // Mount the Docker socket to allow control of the Docker daemon
+                    // Mount the current ELK directory from the workspace into /app inside the container
+                    // Set the working directory inside the container to /app
+                    sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \"${WORKSPACE}/${ELK_DIR}\":/app -w /app docker/compose:1.29.2 down -v --remove-orphans || true"
+                    sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v \"${WORKSPACE}/${ELK_DIR}\":/app -w /app docker/compose:1.29.2 up -d --build"
                 }
                 echo "Waiting for ELK stack to initialize..."
-                // Simple wait. For production, implement more robust health checks.
-                // Adjust time as ELK services (especially Elasticsearch) can take a while to start.
-                sleep(time: 90, unit: 'SECONDS')
+                sleep(time: 90, unit: 'SECONDS') // Adjust as needed
                 echo "ELK Stack should be up and running."
-                // Basic check to see if Elasticsearch is responding
-                sh "curl -s -o /dev/null -w '%{http_code}' http://localhost:9200"
-                echo "Kibana should be accessible at http://localhost:5601"
-                echo "Filebeat is configured to send logs to Logstash at logstash:5044 (within Docker network)"
+                // Basic check for Elasticsearch
+                sh "curl -s -o /dev/null -w '%{http_code}\\n' http://localhost:9200 || echo 'Elasticsearch not responding on localhost:9200'"
+                echo "Kibana should be accessible at http://<jenkins-agent-ip>:5601"
             }
         }
 
