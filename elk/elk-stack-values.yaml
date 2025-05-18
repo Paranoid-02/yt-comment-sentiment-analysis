@@ -2,6 +2,9 @@
 elasticsearch:
   enabled: true
   replicas: 1  # Single-node cluster
+  discovery:
+    seedHosts: "[]"  # Disable multi-node discovery
+    type: "single-node"  # Explicit single-node mode
   minimumMasterNodes: 1
   resources:
     requests:
@@ -32,3 +35,9 @@ esConfig:
     xpack.security.enrollment.enabled: false
     xpack.security.http.ssl.enabled: false
     xpack.security.transport.ssl.enabled: false
+    cluster.initial_master_nodes: []
+    discovery.type: single-node
+
+readinessProbe:
+  initialDelaySeconds: 120
+  periodSeconds: 20

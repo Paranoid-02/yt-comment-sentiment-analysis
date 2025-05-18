@@ -252,75 +252,103 @@ pipeline {
                 }
             }
         }
-
-        stage('Validate Resources') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                sh '''
-                    echo "=== Node Resources ==="
-                    kubectl --kubeconfig=${KUBECONFIG} describe nodes | grep -A 10 "Allocatable" || true
-                    echo "=== Current Pods ==="
-                    kubectl --kubeconfig=${KUBECONFIG} get pods -n logging || true
-                    echo "=== Storage Classes ==="
-                    kubectl --kubeconfig=${KUBECONFIG} get storageclass || true
-                '''
-                }
-            }
-        }
-
+        
         stage('Deploy ELK Stack') {
             steps {
                 dir('elk') {
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh '''
-                        export KUBECONFIG=${KUBECONFIG}
-                        
-                        # Create namespace
-                        kubectl create namespace logging || true
-                        
-                        # Deploy Elasticsearch with longer timeout
-                        helm upgrade --install elasticsearch elastic/elasticsearch \
-                            -n logging \
-                            -f elk-stack-values.yaml
-                            
-                        # Debug immediately if fails
-                        if ! kubectl wait --for=condition=ready pod -l app=elasticsearch-master -n logging --timeout=600s; then
-                            echo "❌ Elasticsearch failed to start"
-                            kubectl describe pods -n logging -l app=elasticsearch-master
-                            kubectl logs -n logging elasticsearch-master-0
-                            exit 1
-                        fi
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Deploy Fluentd') {
-            steps {
-                dir('elk') {
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh '''
-                            export KUBECONFIG=${KUBECONFIG}
-                            kubectl apply -f fluentd-configmap.yaml -n logging
-                            kubectl apply -f https://raw.githubusercontent.com/fluent/fluentd-kubernetes-daemonset/master/fluentd-daemonset-elasticsearch-rbac.yaml -n logging
-                        '''
-                    }
+                sh '''
+                    # Stop existing containers
+                    docker-compose down -v || true
+                    
+                    # Start new deployment
+                    docker-compose up -d
+                    
+                    # Wait for ELK to be ready
+                    timeout 300 bash -c 'until curl -s http://localhost:9200; do sleep 5; done'
+                '''
                 }
             }
         }
 
         stage('Verify ELK') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    sh '''
-                        export KUBECONFIG=${KUBECONFIG}
-                        kubectl wait --for=condition=ready pod -l app=kibana -n logging --timeout=300s
-                        echo "Kibana URL: $(kubectl get svc kibana-kibana -n logging -o jsonpath='{.spec.ports[0].nodePort}')"
-                    '''
-                }
+                sh '''
+                echo "Elasticsearch:"
+                curl -s http://localhost:9200/_cluster/health | jq
+                
+                echo "Kibana:"
+                curl -s http://localhost:5601/api/status | jq
+                '''
             }
         }
+        // stage('Validate Resources') {
+        //     steps {
+        //         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+        //         sh '''
+        //             echo "=== Node Resources ==="
+        //             kubectl --kubeconfig=${KUBECONFIG} describe nodes | grep -A 10 "Allocatable" || true
+        //             echo "=== Current Pods ==="
+        //             kubectl --kubeconfig=${KUBECONFIG} get pods -n logging || true
+        //             echo "=== Storage Classes ==="
+        //             kubectl --kubeconfig=${KUBECONFIG} get storageclass || true
+        //         '''
+        //         }
+        //     }
+        // }
+
+        // stage('Deploy ELK Stack') {
+        //     steps {
+        //         dir('elk') {
+        //             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+        //                 sh '''
+        //                 export KUBECONFIG=${KUBECONFIG}
+                        
+        //                 # Create namespace
+        //                 kubectl create namespace logging || true
+                        
+        //                 # Deploy Elasticsearch with longer timeout
+        //                 helm upgrade --install elasticsearch elastic/elasticsearch \
+        //                     -n logging \
+        //                     -f elk-stack-values.yaml
+                            
+        //                 # Debug immediately if fails
+        //                 if ! kubectl wait --for=condition=ready pod -l app=elasticsearch-master -n logging --timeout=600s; then
+        //                     echo "❌ Elasticsearch failed to start"
+        //                     kubectl describe pods -n logging -l app=elasticsearch-master
+        //                     kubectl logs -n logging elasticsearch-master-0
+        //                     exit 1
+        //                 fi
+        //                 '''
+        //             }
+        //         }
+        //     }
+        // }
+
+        // stage('Deploy Fluentd') {
+        //     steps {
+        //         dir('elk') {
+        //             withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+        //                 sh '''
+        //                     export KUBECONFIG=${KUBECONFIG}
+        //                     kubectl apply -f fluentd-configmap.yaml -n logging
+        //                     kubectl apply -f https://raw.githubusercontent.com/fluent/fluentd-kubernetes-daemonset/master/fluentd-daemonset-elasticsearch-rbac.yaml -n logging
+        //                 '''
+        //             }
+        //         }
+        //     }
+        // }
+
+        // stage('Verify ELK') {
+        //     steps {
+        //         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+        //             sh '''
+        //                 export KUBECONFIG=${KUBECONFIG}
+        //                 kubectl wait --for=condition=ready pod -l app=kibana -n logging --timeout=300s
+        //                 echo "Kibana URL: $(kubectl get svc kibana-kibana -n logging -o jsonpath='{.spec.ports[0].nodePort}')"
+        //             '''
+        //         }
+        //     }
+        // }
     }
     post {
         success {
