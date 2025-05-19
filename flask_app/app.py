@@ -62,35 +62,6 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
 # Initialize the model and vectorizer
 model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "22", "./tfidf_vectorizer.pkl")
 
-# @app.before_request
-# def before_request():
-#     request.start_time = time.time()
-
-# @app.after_request
-# def after_request(response):
-    
-#     latency = time.time() - request.start_time
-#     REQUEST_LATENCY.labels(
-#         method=request.method,
-#         endpoint=request.path
-#     ).observe(latency)
-    
-#     REQUEST_COUNT.labels(
-#         method=request.method,
-#         endpoint=request.path,
-#         http_status=response.status_code
-#     ).inc()
-    
-#     if response.status_code >= 400:
-#         ERROR_COUNT.labels(error_type=str(response.status_code)).inc()
-    
-#     return response
-
-# @app.route('/metrics')
-# def metrics():
-#     from prometheus_client import generate_latest
-#     return generate_latest(), 200, {'Content-Type': 'text/plain'}
-
 @app.route('/predict_with_timestamps', methods=['POST'])
 def predict_with_timestamps():    
     # Ensure model and vectorizer loaded correctly during startup

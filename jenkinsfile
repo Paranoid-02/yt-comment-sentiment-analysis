@@ -66,7 +66,6 @@ pipeline {
                     string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
                 ]) {
                     sh '''
-                        # MUST activate the same venv
                         . venv/bin/activate
                         
                         # Debugging info
@@ -83,28 +82,28 @@ pipeline {
             }
         }
 
-        // stage('Test Model') {
-        //     steps {
-        //         withCredentials([
-        //             string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
-        //             string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
-        //         ]) {
-        //             sh '''#!/bin/bash
-        //                 . venv/bin/activate
+        stage('Test Model') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')
+                ]) {
+                    sh '''#!/bin/bash
+                        . venv/bin/activate
                         
-        //                 # Install pytest if missing
-        //                 pip install pytest || true
+                        # Install pytest if missing
+                        pip install pytest || true
                         
-        //                 # Run tests
-        //                 pytest -v --junitxml=test-results.xml \\
-        //                     scripts/test_load_model.py \\
-        //                     scripts/test_model_signature.py \\
-        //                     scripts/test_model_performance.py
-        //             '''
-        //         }
-        //         junit 'test-results.xml'
-        //     }
-        // }
+                        # Run tests
+                        pytest -v --junitxml=test-results.xml \\
+                            scripts/test_load_model.py \\
+                            scripts/test_model_signature.py \\
+                            scripts/test_model_performance.py
+                    '''
+                }
+                junit 'test-results.xml'
+            }
+        }
 
         stage('Git Versioning') {
             when {
