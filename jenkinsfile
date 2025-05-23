@@ -256,69 +256,52 @@ pipeline {
             steps {
                 dir('elk') {
                     sh '''#!/bin/bash
-                        set -ex  # Enable debugging
+                        set -ex
                         
-                        # Clean previous deployment
+                        # Cleanup previous deployment
                         docker compose down -v || true
                         
-                        # Create config directory
+                        # Create minimal configs without heredoc issues
                         mkdir -p elk-config
-                        chmod -R 755 elk-config
-                        
-                        # Generate config files
-                        cat > elk-config/elasticsearch.yml <<'ES_EOF'
-        cluster.name: "docker-cluster"
+                        echo 'cluster.name: "docker-cluster"
         network.host: 0.0.0.0
         discovery.type: single-node
-        xpack.security.enabled: false
-        ES_EOF
+        xpack.security.enabled: false' > elk-config/elasticsearch.yml
                         
-                        cat > elk-config/kibana.yml <<'KB_EOF'
-        server.host: "0.0.0.0"
-        server.publicBaseUrl: "http://localhost:5601"
-        elasticsearch.hosts: ["http://elasticsearch:9200"]
-        monitoring.ui.container.elasticsearch.enabled: true
-        KB_EOF
+                        echo 'server.host: "0.0.0.0"
+        elasticsearch.hosts: ["http://elasticsearch:9200"]' > elk-config/kibana.yml
                         
-                        # Start containers
-                        docker compose up -d --wait
+                        # Start services with proper waiting
+                        docker compose up -d
                         
-                        # Debugging: Show running containers
-                        echo "--- Running Containers ---"
-                        docker ps -a
-                        
-                        # Debugging: Show logs
-                        echo "--- Elasticsearch Logs ---"
-                        docker compose logs elasticsearch
-                        echo "--- Kibana Logs ---"
-                        docker compose logs kibana
-                        
-                        # Verify Elasticsearch
-                        echo "Testing Elasticsearch connection..."
-                        for i in {1..10}; do
-                            if curl -s http://localhost:9200; then
-                                echo "Elasticsearch is up!"
-                                break
+                        # Wait for Elasticsearch
+                        echo "Waiting for Elasticsearch..."
+                        for i in {1..30}; do
+                            if docker compose logs elasticsearch | grep -q "started"; then
+                                if curl -sS http://localhost:9200; then
+                                    break
+                                fi
                             fi
-                            sleep 10
-                            echo "Attempt $i/10: Elasticsearch not ready yet..."
+                            sleep 5
                         done
                         
-                        # Verify Kibana
-                        echo "Testing Kibana connection..."
-                        for i in {1..15}; do
-                            if curl -s http://localhost:5601/api/status; then
-                                echo "Kibana is up!"
-                                break
+                        # Wait for Kibana
+                        echo "Waiting for Kibana..."
+                        for i in {1..30}; do
+                            if docker compose logs kibana | grep -q "Server running"; then
+                                if curl -sS http://localhost:5601/api/status; then
+                                    break
+                                fi
                             fi
-                            sleep 10
-                            echo "Attempt $i/15: Kibana not ready yet..."
+                            sleep 5
                         done
                         
-                        # Final status check
-                        echo "--- Final Status ---"
-                        curl -s http://localhost:9200/_cluster/health | jq
-                        curl -s http://localhost:5601/api/status | jq
+                        # Final verification
+                        echo "Elasticsearch status:"
+                        curl -sS http://localhost:9200/_cluster/health | jq
+                        
+                        echo "Kibana status:"
+                        curl -sS http://localhost:5601/api/status | jq
                     '''
                 }
             }
