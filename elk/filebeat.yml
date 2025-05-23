@@ -8,4 +8,7 @@ filebeat.inputs:
 output.elasticsearch:
   hosts: ["elasticsearch:9200"]
   indices:
-    - index: "api-logs-%{+yyyy.MM.dd}"
+    - index: "logs-%{+yyyy.MM.dd}"
+
+setup.ilm.enabled: false
+setup.template.enabled: false
