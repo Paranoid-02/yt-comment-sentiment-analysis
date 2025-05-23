@@ -1,0 +1,21 @@
+---
+- name: Debug variables (kubernetes_secrets role)
+  ansible.builtin.debug:
+    msg: "Creating secrets in namespace: {{ k8s_namespace }}"
+
+- name: Ensure AWS credentials secret exists
+  kubernetes.core.k8s:
+    state: present
+    verify_ssl: no
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: app-secrets
+        namespace: "{{ k8s_namespace }}"
+      type: Opaque
+      data:
+        # Ensure these environment variables are set where Ansible runs
+        aws-access-key: "{{ lookup('env', 'aws_access_key_id') | b64encode }}"
+        aws-secret: "{{ lookup('env', 'aws_secret_access_key') | b64encode }}"
+  # no_log: true

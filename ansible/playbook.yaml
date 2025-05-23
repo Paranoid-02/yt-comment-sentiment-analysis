@@ -4,8 +4,10 @@
   vars:
     image_name: "{{ image_name }}"
     k8s_namespace: "default"
-  
-  tasks:
+  vars_files:
+    - secret_vars.yml
+
+  pre_tasks:
     - name: Debug variables
       debug:
         msg: "Using image: {{ image_name }} in namespace: {{ k8s_namespace }}"
@@ -20,24 +22,18 @@
       command: minikube start --driver=docker
       when: minikube_status.rc != 0
       
+  roles:
+    - role: kubernetes_secrets
+
+  tasks:
+    - name: Debug variables
+      debug:
+        msg: "Deploying image: {{ image_name }} to namespace: {{ k8s_namespace }}"
+
     - name: Create processed deployment file
       template:
         src: templates/deployment.yaml.j2
         dest: ../kubernetes/deployment-processed.yaml
-      
-    - name: Create AWS credentials secret
-      kubernetes.core.k8s:
-        state: present
-        verify_ssl: no
-        definition:
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: app-secrets
-            namespace: "{{ k8s_namespace }}"
-          data:
-            aws-access-key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | b64encode }}"
-            aws-secret: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | b64encode }}"
       
     - name: Apply Kubernetes resources
       kubernetes.core.k8s:
