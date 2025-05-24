@@ -48,8 +48,19 @@ pipeline {
         stage('Setup Environment') {
             steps {
                 sh """
+                    # Remove and recreate the virtual environment
+                    rm -rf venv
+                    python3 -m venv venv || python -m venv venv  # Fallback for different Python versions
+                    
+                    # Activate and ensure pip is working
                     . venv/bin/activate
-                    pip install --upgrade pip
+                    python -m ensurepip --upgrade
+                    python -m pip install --upgrade pip setuptools wheel
+                    
+                    # Verify installation
+                    pip --version
+                    python -c "import pip; print(pip.__version__)"
+
                     pip install -r requirements.txt \
                         mlflow==2.15.0 \
                         numpy==1.26.4 \
