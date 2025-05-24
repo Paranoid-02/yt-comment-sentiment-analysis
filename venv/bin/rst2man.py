@@ -1,4 +1,4 @@
-#!/var/lib/jenkins/workspace/FinalProject/venv/bin/python3
+#!/var/lib/jenkins/workspace/FinalProject/venv/bin/python
 
 # Author:
 # Contact: grubert@users.sf.net
