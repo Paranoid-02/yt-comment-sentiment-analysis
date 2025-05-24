@@ -205,7 +205,7 @@ pipeline {
                         git pull origin main
                         
                         # Verify app.py content
-                        cat app.py | grep -i "mlflow"
+                        cat flask_app/app.py | grep -i "mlflow"
                         
                         # Build with complete cache invalidation
                         docker system prune -af
