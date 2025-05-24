@@ -1,3 +1,4 @@
+ARG BUILD_DATE=unknown
 FROM python:3.11.11-slim
 
 # Set working directory
@@ -26,6 +27,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pyarrow==15.0.2 \
     scipy==1.14.0 \
     gunicorn==20.1.0
+
+RUN echo "Build date: ${BUILD_DATE}" > /build.info
 
 # Copy application files
 COPY . .
