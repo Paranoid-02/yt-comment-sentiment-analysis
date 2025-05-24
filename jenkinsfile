@@ -48,6 +48,7 @@ pipeline {
             steps {
                 sh """
                     . venv/bin/activate
+                    pip install --upgrade pip
                     pip install -r requirements.txt \
                         mlflow==2.15.0 \
                         numpy==1.26.4 \
