@@ -231,15 +231,6 @@ pipeline {
                     '''
                 }
             }
-            post {
-                always {
-                    sh '''
-                        # Verify the built image contains the correct MLflow URI
-                        docker run --rm $DOCKER_USER/yt-comment-sentiment-analysis:$BUILD_NUMBER \
-                            python -c "from app import mlflow_uri; print(f'MLflow URI in image: {mlflow_uri}')"
-                    '''
-                }
-            }
         }
 
         stage('Deploy to Kubernetes Via Ansible') {
