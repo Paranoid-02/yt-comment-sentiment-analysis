@@ -19,7 +19,7 @@ import matplotlib.dates as mdates
 import time
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
 # Define the preprocessing function
 def preprocess_comment(comment):
@@ -60,7 +60,7 @@ def load_model_and_vectorizer(model_name, model_version, vectorizer_path):
     return model, vectorizer
 
 # Initialize the model and vectorizer
-model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "22", "./tfidf_vectorizer.pkl")
+model, vectorizer = load_model_and_vectorizer("yt_chrome_plugin_model", "33", "./tfidf_vectorizer.pkl")
 
 @app.route('/predict_with_timestamps', methods=['POST'])
 def predict_with_timestamps():    
