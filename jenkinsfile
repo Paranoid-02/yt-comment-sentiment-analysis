@@ -17,6 +17,7 @@ pipeline {
         stage('Checkout Code') {
             steps {
                 script {
+                    cleanWs()
                     git branch: 'main', url: "${GITHUB_REPO_URL}"
                 }
             }
